@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "408006768938",
+    "project_id": "chargex-99071",
+    "storage_bucket": "chargex-99071.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:408006768938:android:0e845798f96b7153aec653",
+        "android_client_info": {
+          "package_name": "com.example.chargex"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "408006768938-5mkdfscpkcma6stegpkjro23s5g9fkhg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCnSmbQFaoL5kMv3cg45u9D26NiSAZSCRk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "408006768938-5mkdfscpkcma6stegpkjro23s5g9fkhg.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "408006768938-i58qb5bf3bebh603bks7id9aue1kf3tl.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.chargex"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
