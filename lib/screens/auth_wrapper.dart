@@ -19,21 +19,26 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: authService.user,
       builder: (context, authSnapshot) {
-        // 🕒 Wait for Firebase Auth
+        // 🕒 Wait for Firebase Auth to initialize
         if (authSnapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // 🚪 User logged out
+        // 🚪 CASE 1: User is logged out
         if (!authSnapshot.hasData || authSnapshot.data == null) {
           return const LoginScreen();
         }
 
-        // 👤 User logged in
         final loggedInUser = authSnapshot.data!;
 
+        // 🚫 CASE 2: Invalid or incomplete user (safety check)
+        if (loggedInUser.uid.isEmpty || loggedInUser.email == null) {
+          return const LoginScreen();
+        }
+
+        // 🔍 CASE 3: Fetch Firestore user document
         return FutureBuilder<UserModel?>(
           future: dbService.getUser(loggedInUser.uid),
           builder: (context, userDocSnapshot) {
@@ -45,7 +50,7 @@ class AuthWrapper extends StatelessWidget {
 
             final userData = userDocSnapshot.data;
 
-            // 🟠 CASE 1: No user data found (very rare)
+            // 🟠 CASE 4: No Firestore user record found (very rare)
             if (userData == null) {
               return const CompleteProfileScreen();
             }
@@ -57,7 +62,7 @@ class AuthWrapper extends StatelessWidget {
             bool isEmailUser = loggedInUser.providerData
                 .any((provider) => provider.providerId == 'password');
 
-            // 🟡 CASE 2: Google user with incomplete data
+            // 🟡 CASE 5: Google user but missing details
             if (isGoogleUser &&
                 (userData.vehicleType == 'Not set' ||
                     userData.vehicleBrand == 'Not set' ||
@@ -65,13 +70,13 @@ class AuthWrapper extends StatelessWidget {
               return const CompleteProfileScreen();
             }
 
-            // 🟢 CASE 3: Email users (or complete Google users)
+            // 🟢 CASE 6: Email user or complete Google user
             if (isEmailUser || !isGoogleUser) {
               return const ProfileScreen();
             }
 
-            // Default fallback (shouldn't occur)
-            return const ProfileScreen();
+            // 🧩 Default fallback (shouldn’t happen)
+            return const LoginScreen();
           },
         );
       },

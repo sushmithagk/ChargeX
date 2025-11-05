@@ -6,22 +6,23 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 /*
-  This class handles all authentication logic (sign up, sign in, sign out).
-  It communicates directly with Firebase Authentication.
+  AuthService — handles all sign-up, sign-in, and sign-out logic.
+  Works with Firebase Authentication + Firestore + Google Sign-In.
 */
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final DatabaseService _db = DatabaseService();
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  /// Stream of user authentication state (for the AuthWrapper)
+  /// Stream of authentication changes (for AuthWrapper)
   Stream<User?> get user => _auth.authStateChanges();
 
-  /// Gets the currently signed-in user object (synchronously)
+  /// Currently signed-in user (nullable)
   User? get currentUser => _auth.currentUser;
 
-  /// --- EMAIL SIGN UP ---
-  /// Creates a Firebase Auth user and a Firestore user document.
+  // -------------------------------------------------------------------------
+  // 🔹 EMAIL SIGN-UP
+  // -------------------------------------------------------------------------
   Future<String?> signUpWithEmail({
     required String email,
     required String password,
@@ -31,16 +32,15 @@ class AuthService {
     required Map<String, dynamic> vehicleData,
   }) async {
     try {
-      // 1. Create user in Firebase Auth
-      UserCredential userCredential =
-      await _auth.createUserWithEmailAndPassword(
+      // 1. Create the Firebase Auth user
+      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
       User? user = userCredential.user;
 
       if (user != null) {
-        // 2. Create a UserModel object
+        // 2. Build a new UserModel
         UserModel newUser = UserModel(
           uid: user.uid,
           displayName: name,
@@ -53,41 +53,68 @@ class AuthService {
           createdAt: Timestamp.now(),
         );
 
-        // 3. Save the user to Firestore
+        // 3. Save user to Firestore
         await _db.createUser(newUser);
-        return null; // success
+        return null; // ✅ Success
       }
       return "User creation failed.";
     } on FirebaseAuthException catch (e) {
+      // 🔸 Catch Firebase errors
+      if (e.code == 'email-already-in-use') {
+        return 'This email is already registered.';
+      } else if (e.code == 'invalid-email') {
+        return 'Invalid email address.';
+      } else if (e.code == 'weak-password') {
+        return 'Password must be at least 6 characters.';
+      }
       return e.message;
+    } catch (e) {
+      // 🔸 Catch any unexpected errors
+      return e.toString();
     }
   }
 
-  /// --- EMAIL SIGN IN ---
+  // -------------------------------------------------------------------------
+  // 🔹 EMAIL SIGN-IN
+  // -------------------------------------------------------------------------
   Future<String?> signInWithEmail({
     required String email,
     required String password,
   }) async {
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
-      return null; // success
+      return null; // ✅ Success
     } on FirebaseAuthException catch (e) {
+      // 🔸 Handle specific Firebase error codes
+      if (e.code == 'user-not-found') {
+        return 'No account found for this email.';
+      } else if (e.code == 'wrong-password') {
+        return 'Incorrect password. Try again.';
+      } else if (e.code == 'invalid-email') {
+        return 'The email address is invalid.';
+      } else if (e.code == 'user-disabled') {
+        return 'This account has been disabled.';
+      }
       return e.message;
+    } catch (e) {
+      // 🔸 Any other error (network issues, etc.)
+      return e.toString();
     }
   }
 
-  /// --- GOOGLE SIGN IN ---
+  // -------------------------------------------------------------------------
+  // 🔹 GOOGLE SIGN-IN
+  // -------------------------------------------------------------------------
   Future<String?> signInWithGoogle(BuildContext context) async {
     try {
-      // 1. Trigger the Google sign-in flow
+      // 1. Start Google sign-in flow
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         return "Sign-in cancelled.";
       }
 
-      // 2. Obtain auth details from Google
-      final GoogleSignInAuthentication googleAuth =
-      await googleUser.authentication;
+      // 2. Get authentication tokens
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
       // 3. Create Firebase credential
       final AuthCredential credential = GoogleAuthProvider.credential(
@@ -96,13 +123,12 @@ class AuthService {
       );
 
       // 4. Sign in to Firebase
-      UserCredential userCredential =
-      await _auth.signInWithCredential(credential);
+      UserCredential userCredential = await _auth.signInWithCredential(credential);
       User? user = userCredential.user;
 
       if (user != null) {
-        // 5. If new user, create Firestore record
-        if (userCredential.additionalUserInfo!.isNewUser) {
+        // 5. Check if this is a NEW Google user
+        if (userCredential.additionalUserInfo?.isNewUser ?? false) {
           UserModel newUser = UserModel(
             uid: user.uid,
             displayName: user.displayName ?? "Google User",
@@ -116,17 +142,23 @@ class AuthService {
           );
           await _db.createUser(newUser);
         }
-        return null; // success
+        return null; // ✅ Success
       }
       return "Sign-in failed.";
     } on FirebaseAuthException catch (e) {
+      // 🔸 Catch specific Firebase errors
+      if (e.code == 'account-exists-with-different-credential') {
+        return 'Account already exists with a different sign-in method.';
+      }
       return e.message;
     } catch (e) {
       return e.toString();
     }
   }
 
-  /// --- SIGN OUT ---
+  // -------------------------------------------------------------------------
+  // 🔹 SIGN-OUT
+  // -------------------------------------------------------------------------
   Future<void> signOut() async {
     await _googleSignIn.signOut();
     await _auth.signOut();
