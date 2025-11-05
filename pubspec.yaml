@@ -10,7 +10,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
+#   for email authentication
+  http: ^1.2.0
 
   # --- ALL YOUR PROJECT PACKAGES GO HERE ---
 
