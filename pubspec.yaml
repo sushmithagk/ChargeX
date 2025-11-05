@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
 
+
   # --- ALL YOUR PROJECT PACKAGES GO HERE ---
 
   # Firebase
@@ -34,6 +35,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+  - assets/images/google_logo.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -1,63 +1,116 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chargex/services/auth_service.dart';
-import 'package:chargex/services/location_service.dart';
+import 'package:chargex/services/database_service.dart';
 import 'package:chargex/utils/show_snack_bar.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart'; // <-- THIS IMPORT IS NEEDED
 import 'package:provider/provider.dart';
 
-class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key});
+// Import the location service
+import 'package:chargex/services/location_service.dart';
+
+// Import the geolocator package, but HIDE the conflicting class name
+import 'package:geolocator/geolocator.dart'
+    hide LocationServiceDisabledException;
+
+class SignupScreen extends StatefulWidget {
+  const SignupScreen({super.key});
 
   @override
-  State<SignUpScreen> createState() => _SignUpScreenState();
+  State<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _SignUpScreenState extends State<SignUpScreen> {
-  final _formKey = GlobalKey<FormState>();
+class _SignupScreenState extends State<SignupScreen> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  // Form Controllers
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+  TextEditingController();
+  final TextEditingController _brandController = TextEditingController();
+  final TextEditingController _modelController = TextEditingController();
+  String _vehicleType = '2-wheeler'; // Default dropdown value
+  GeoPoint? _location; // To store the user's location
+
   bool _isLoading = false;
-
-  // Controllers for all your new fields
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  final _vehicleBrandController = TextEditingController();
-  final _vehicleModelController = TextEditingController();
-
-  String? _selectedVehicleType = '4-wheeler'; // Default value
+  bool _isLocating = false;
+  bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
 
   @override
   void dispose() {
-    // Dispose all controllers to prevent memory leaks
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _vehicleBrandController.dispose();
-    _vehicleModelController.dispose();
+    _brandController.dispose();
+    _modelController.dispose();
     super.dispose();
   }
 
-  // --- NEW FUNCTION TO SHOW THE DIALOG ---
-  void _showEnableLocationDialog() {
-    showDialog(
+  /// Asks for permission and gets the user's current location
+  Future<void> _getUserLocation() async {
+    setState(() {
+      _isLocating = true;
+    });
+
+    final locationService =
+    Provider.of<LocationService>(context, listen: false);
+
+    try {
+      // 1. Get location. This will throw an error if not enabled/permitted.
+      final position = await locationService.getCurrentLocation();
+
+      // 2. If successful, save it as a GeoPoint
+      setState(() {
+        _location = GeoPoint(position.latitude, position.longitude);
+        _isLocating = false;
+      });
+      if (mounted) {
+        showSnackBar(context, "Location captured!");
+      }
+    } on LocationServiceDisabledException {
+      // 3. CATCH THE SPECIFIC ERROR from our location_service.dart
+      if (mounted) {
+        // And call the dialog function (which we added below)
+        await _showEnableLocationDialog();
+      }
+    } catch (e) {
+      // 4. Catch any other errors (like permission denied)
+      if (mounted) {
+        showSnackBar(context, e.toString());
+      }
+    } finally {
+      // 5. Always stop the loading indicator
+      if (mounted) {
+        setState(() {
+          _isLocating = false;
+        });
+      }
+    }
+  }
+
+  /// Shows the dialog to enable location services
+  Future<void> _showEnableLocationDialog() async {
+    await showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
         title: const Text('Location Services Disabled'),
         content: const Text(
-            'To continue, please enable location services on your device.'),
+            'Please enable location services to find nearby stations.'),
         actions: [
           TextButton(
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
             onPressed: () => Navigator.of(context).pop(),
           ),
           TextButton(
-            child: const Text('Open Settings'),
+            child: const Text('Open Settings',
+                style: TextStyle(color: Colors.indigoAccent)),
             onPressed: () {
-              // This opens the phone's location settings page
               Geolocator.openLocationSettings();
               Navigator.of(context).pop();
             },
@@ -67,67 +120,59 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  // --- UPDATED SIGN UP FUNCTION ---
-  void _handleSignUp() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+  /// Handles the entire sign-up process
+  Future<void> _handleSignUp() async {
+    // 1. Validate the form
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
-      // Get all our services from Provider
-      final authService = Provider.of<AuthService>(context, listen: false);
-      final locationService =
-      Provider.of<LocationService>(context, listen: false);
+    // 2. Check that location has been captured
+    if (_location == null) {
+      showSnackBar(context, "Please capture your location first.");
+      return;
+    }
 
-      try {
-        // --- 1. Get User Location (as requested) ---
-        final GeoPoint? location = await locationService.getCurrentLocation();
-        if (location == null) {
-          // This should not happen if permissions are granted, but as a fallback.
-          throw Exception('Could not get your location.');
-        }
+    setState(() {
+      _isLoading = true;
+    });
 
-        // --- 2. Create the Vehicle Data ---
-        Map<String, dynamic> vehicleDetails = {
-          'type': _selectedVehicleType,
-          'brand': _vehicleBrandController.text.trim(),
-          'model': _vehicleModelController.text.trim(),
-        };
+    // 3. Get the Auth service
+    final authService = Provider.of<AuthService>(context, listen: false);
 
-        // --- 3. Call AuthService to Sign Up ---
-        final error = await authService.signUpWithEmail(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
-          name: _nameController.text.trim(),
-          phone: _phoneController.text.trim(),
-          location: location,
-          vehicleData: vehicleDetails,
-        );
+    // 4. Create the Vehicle Data Map
+    Map<String, dynamic> vehicleData = {
+      'type': _vehicleType,
+      'brand': _brandController.text.trim(),
+      'model': _modelController.text.trim(),
+    };
 
-        // --- 4. Handle results ---
-        if (error != null) {
-          // Show Firebase error
-          throw Exception(error);
-        } else {
-          // Success! Pop the screen to return to the Login page.
-          // The AuthWrapper will then auto-navigate to the ProfileScreen.
-          if (mounted) {
-            showSnackBar(context, "Account created successfully!");
-            Navigator.of(context).pop();
-          }
-        }
-      } on LocationServiceDisabledException { // <-- CATCH THE SPECIFIC ERROR
-        // This is what you wanted! Show the dialog instead of the snackbar.
-        if (mounted) _showEnableLocationDialog();
-      } catch (e) {
-        // Show any other error (like "permission denied")
-        if (mounted) showSnackBar(context, e.toString());
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+    // 5. Call the signUpWithEmail function
+    String? error = await authService.signUpWithEmail(
+      email: _emailController.text.trim(),
+      password: _passwordController.text.trim(),
+      name: _nameController.text.trim(),
+      phone: _phoneController.text.trim(),
+      location: _location!, // We know _location is not null here
+      vehicleData: vehicleData,
+    );
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    // 6. Handle the response
+    if (error == null) {
+      // Success!
+      showSnackBar(context, "Account created successfully!");
+      if (mounted) {
+        // Pop back to the Login Screen
+        Navigator.of(context).pop();
+      }
+    } else {
+      // Failure
+      if (mounted) {
+        showSnackBar(context, error);
       }
     }
   }
@@ -137,8 +182,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create Account'),
-        elevation: 0,
         backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -148,67 +193,117 @@ class _SignUpScreenState extends State<SignUpScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'Tell us about yourself',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 32),
-
-                // --- User Details ---
-                _buildSectionTitle('Account Details'),
+                // --- Personal Details ---
+                const Text('Personal Details',
+                    style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
                 TextFormField(
                   controller: _nameController,
-                  decoration: const InputDecoration(labelText: 'Full Name'),
-                  validator: (v) => v!.isEmpty ? 'Enter your name' : null,
+                  decoration: const InputDecoration(labelText: 'Full Name *'),
+                  validator: (value) =>
+                  value == null || value.isEmpty ? 'Name is required' : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _emailController,
-                  decoration: const InputDecoration(labelText: 'Email'),
+                  decoration: const InputDecoration(labelText: 'Email *'),
                   keyboardType: TextInputType.emailAddress,
-                  validator: (v) =>
-                  v!.isEmpty || !v.contains('@')
-                      ? 'Enter a valid email'
-                      : null,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Email is required';
+                    }
+                    if (!value.contains('@') || !value.contains('.')) {
+                      return 'Enter a valid email address';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _phoneController,
                   decoration: const InputDecoration(
-                      labelText: 'Phone Number (e.g., +91...)'),
+                      labelText: 'Phone Number *', prefixText: '+91 '),
                   keyboardType: TextInputType.phone,
-                  validator: (v) =>
-                  v!.isEmpty ? 'Enter your phone number' : null,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Phone number is required';
+                    }
+                    if (value.length < 10) {
+                      return 'Enter a valid 10-digit number';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _passwordController,
-                  decoration:
-                  const InputDecoration(labelText: 'Password (min. 6 chars)'),
-                  obscureText: true,
-                  validator: (v) =>
-                  v!.length < 6 ? 'Password must be 6+ chars' : null,
+                  decoration: InputDecoration(
+                    labelText: 'Password (min. 6 chars) *',
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isPasswordVisible
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isPasswordVisible = !_isPasswordVisible;
+                        });
+                      },
+                    ),
+                  ),
+                  obscureText: !_isPasswordVisible,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Password is required';
+                    }
+                    if (value.length < 6) {
+                      return 'Password must be at least 6 characters';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _confirmPasswordController,
-                  decoration:
-                  const InputDecoration(labelText: 'Confirm Password'),
-                  obscureText: true,
-                  validator: (v) {
-                    if (v != _passwordController.text) {
+                  decoration: InputDecoration(
+                    labelText: 'Confirm Password *',
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isConfirmPasswordVisible
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isConfirmPasswordVisible =
+                          !_isConfirmPasswordVisible;
+                        });
+                      },
+                    ),
+                  ),
+                  obscureText: !_isConfirmPasswordVisible,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please confirm your password';
+                    }
+                    if (value != _passwordController.text) {
                       return 'Passwords do not match';
                     }
                     return null;
                   },
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
-                // --- Vehicle Details (as requested) ---
-                _buildSectionTitle('Vehicle Details'),
+                // --- Vehicle Details ---
+                const Text('Vehicle Details',
+                    style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _selectedVehicleType,
-                  decoration: const InputDecoration(labelText: 'Vehicle Type'),
+                  value: _vehicleType,
+                  decoration: const InputDecoration(labelText: 'Vehicle Type *'),
                   items: ['2-wheeler', '4-wheeler']
                       .map((type) => DropdownMenuItem(
                     value: type,
@@ -216,57 +311,85 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ))
                       .toList(),
                   onChanged: (value) {
-                    setState(() {
-                      _selectedVehicleType = value;
-                    });
+                    if (value != null) {
+                      setState(() {
+                        _vehicleType = value;
+                      });
+                    }
                   },
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
-                  controller: _vehicleBrandController,
+                  controller: _brandController,
                   decoration: const InputDecoration(
-                      labelText: 'Vehicle Brand (e.g., Tata, Ola)'),
-                  validator: (v) => v!.isEmpty ? 'Enter vehicle brand' : null,
+                      labelText: 'Vehicle Brand (e.g., Tata, Ola) *'),
+                  validator: (value) => value == null || value.isEmpty
+                      ? 'Brand is required'
+                      : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
-                  controller: _vehicleModelController,
+                  controller: _modelController,
                   decoration: const InputDecoration(
-                      labelText: 'Vehicle Model (e.g., Nexon EV, S1 Pro)'),
-                  validator: (v) => v!.isEmpty ? 'Enter vehicle model' : null,
+                      labelText: 'Vehicle Model (e.g., Nexon EV) *'),
+                  validator: (value) =>
+                  value == null || value.isEmpty ? 'Model is required' : null,
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
-                // --- Location Info (as requested) ---
-                _buildSectionTitle('Location'),
+                // --- Location ---
+                const Text('Your Location',
+                    style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                      color: Colors.indigo.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.indigoAccent)),
-                  child: const Row(
+                    color: Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Icon(Icons.location_on_outlined,
-                          color: Colors.indigoAccent),
-                      SizedBox(width: 12),
-                      Expanded(
+                      Flexible(
                         child: Text(
-                          'We need your location to find nearby stations. You will be asked for permission.',
-                          style: TextStyle(fontSize: 13),
+                          _location == null
+                              ? 'We need your location to find nearby stations.'
+                              : 'Location captured successfully!',
+                          style: TextStyle(
+                            color: _location == null
+                                ? Colors.grey[400]
+                                : Colors.green[400],
+                          ),
                         ),
+                      ),
+                      _isLocating
+                          ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                          : IconButton(
+                        icon: const Icon(Icons.my_location,
+                            color: Colors.indigoAccent),
+                        onPressed: _getUserLocation,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 30),
 
-                // Sign Up Button
-                _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : ElevatedButton(
-                  onPressed: _handleSignUp,
-                  child: const Text('Create Account'),
+                // --- Create Account Button ---
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _handleSignUp,
+                  child: _isLoading
+                      ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                      : const Text('Create Account'),
                 ),
               ],
             ),
@@ -275,19 +398,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       ),
     );
   }
-
-  // Helper widget to make section titles
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Text(
-        title,
-        style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.indigoAccent),
-      ),
-    );
-  }
 }
+
 
