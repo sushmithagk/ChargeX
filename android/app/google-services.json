@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "408006768938-a625gfs8f88lm8i1goibv9rjvkhueps7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.chargex",
+            "certificate_hash": "49057dcf5ddb3486c5e7969ea25e859aa478b2f6"
+          }
+        },
+        {
           "client_id": "408006768938-5mkdfscpkcma6stegpkjro23s5g9fkhg.apps.googleusercontent.com",
           "client_type": 3
         }

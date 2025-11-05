@@ -1,69 +1,72 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /*
-  This class is a "data model". It defines the structure
-  of a User document in our Firestore database.
-  It makes our code much cleaner and safer.
+  This class is our "data model". It defines the structure of our
+  user document in Firestore and provides two key functions:
+
+  1. toJson(): Converts a UserModel object into a Map (JSON format)
+              so it can be *uploaded* to Firestore.
+
+  2. fromJson(): Creates a UserModel object *from* a Map (JSON format)
+                that is *downloaded* from Firestore.
 */
+
 class UserModel {
   final String uid;
   final String displayName;
   final String email;
   final String phoneNumber;
+  final Timestamp createdAt;
   final GeoPoint lastKnownLocation;
   final String vehicleType;
   final String vehicleBrand;
   final String vehicleModel;
-  final Timestamp createdAt;
 
   UserModel({
     required this.uid,
     required this.displayName,
     required this.email,
     required this.phoneNumber,
+    required this.createdAt,
     required this.lastKnownLocation,
     required this.vehicleType,
     required this.vehicleBrand,
     required this.vehicleModel,
-    required this.createdAt,
   });
 
-  // Factory constructor: Creates a UserModel from a Firestore document
-  factory UserModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-
-    // Handle vehicleDetails map which might be null
-    Map<String, dynamic> vehicleData = data['vehicleDetails'] ?? {};
-
-    return UserModel(
-      uid: data['uid'],
-      displayName: data['displayName'],
-      email: data['email'],
-      phoneNumber: data['phoneNumber'],
-      lastKnownLocation: data['lastKnownLocation'],
-      createdAt: data['createdAt'],
-      // Get data from the nested map
-      vehicleType: vehicleData['type'] ?? 'Not set',
-      vehicleBrand: vehicleData['brand'] ?? 'Not set',
-      vehicleModel: vehicleData['model'] ?? 'Not set',
-    );
-  }
-
-  // Method: Converts a UserModel instance to a Map for Firestore
-  Map<String, dynamic> toFirestore() {
+  /// 1. toJson()
+  /// This function converts our Dart object into a Map (JSON)
+  /// that Firestore understands. This is what `_db.createUser(newUser)` calls.
+  Map<String, dynamic> toJson() {
     return {
       'uid': uid,
       'displayName': displayName,
       'email': email,
       'phoneNumber': phoneNumber,
-      'lastKnownLocation': lastKnownLocation,
       'createdAt': createdAt,
-      // Store vehicle data in a nested map, as planned
-      'vehicleDetails': {
-        'type': vehicleType,
-        'brand': vehicleBrand,
-        'model': vehicleModel,
-      },
+      'lastKnownLocation': lastKnownLocation,
+      'vehicleType': vehicleType,
+      'vehicleBrand': vehicleBrand,
+      'vehicleModel': vehicleModel,
     };
   }
+
+  /// 2. fromJson()
+  /// This "factory constructor" creates a UserModel object
+  /// by reading a Map (JSON) from Firestore.
+  /// This is what `_db.getUser(uid)` calls.
+  factory UserModel.fromJson(Map<String, dynamic> json) {
+    return UserModel(
+      uid: json['uid'] as String,
+      displayName: json['displayName'] as String,
+      email: json['email'] as String,
+      phoneNumber: json['phoneNumber'] as String,
+      createdAt: json['createdAt'] as Timestamp,
+      lastKnownLocation: json['lastKnownLocation'] as GeoPoint,
+      vehicleType: json['vehicleType'] as String,
+      vehicleBrand: json['vehicleBrand'] as String,
+      vehicleModel: json['vehicleModel'] as String,
+    );
+  }
 }
+

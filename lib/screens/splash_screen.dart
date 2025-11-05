@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:chargex/screens/auth_wrapper.dart'; // Import the wrapper
+import 'package:chargex/screens/auth_wrapper.dart'; // <-- THIS IS THE FIX
+import 'package:flutter/material.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -16,41 +16,46 @@ class _SplashScreenState extends State<SplashScreen> {
     _navigateToHome();
   }
 
-  void _navigateToHome() {
-    // Wait for 3 seconds
-    Timer(const Duration(seconds: 3), () {
-      // Navigate to the AuthWrapper, which will decide what page to show
-      // We use pushReplacement so the user can't press "back" to the splash screen
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const AuthWrapper()),
-      );
+  /// Wait for 3 seconds then navigate to the AuthWrapper
+  _navigateToHome() async {
+    await Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        // Use a "pushReplacement" so the user can't press "back"
+        // to get to the splash screen.
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            // Removed 'const' from 'AuthWrapper()'
+            builder: (context) => AuthWrapper(),
+          ),
+        );
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // A simple UI with the logo and app name
     return const Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Placeholder for your logo
+            // --- Your Logo ---
             Icon(
-              Icons.ev_station,
+              Icons.ev_station_rounded,
               size: 100,
               color: Colors.indigoAccent,
             ),
-            SizedBox(height: 24),
+            SizedBox(height: 20),
+            // --- Your App Name ---
             Text(
               'ChargeX',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
-                letterSpacing: 1.5,
+                color: Colors.white,
               ),
             ),
-            SizedBox(height: 16),
+            SizedBox(height: 40),
             CircularProgressIndicator(
               color: Colors.indigoAccent,
             ),
