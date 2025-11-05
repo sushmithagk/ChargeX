@@ -4,11 +4,10 @@ import 'package:chargex/services/database_service.dart';
 import 'package:chargex/utils/show_snack_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
-// Import the location service
 import 'package:chargex/services/location_service.dart';
+import 'package:chargex/services/email_service.dart'; // ✅ NEW IMPORT
+import 'package:chargex/screens/otp_verification_screen.dart'; // ✅ NEW IMPORT
 
-// Import the geolocator package, but HIDE the conflicting class name
 import 'package:geolocator/geolocator.dart'
     hide LocationServiceDisabledException;
 
@@ -51,7 +50,7 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  /// Asks for permission and gets the user's current location
+  /// Fetches user location with permission
   Future<void> _getUserLocation() async {
     setState(() {
       _isLocating = true;
@@ -61,39 +60,22 @@ class _SignupScreenState extends State<SignupScreen> {
     Provider.of<LocationService>(context, listen: false);
 
     try {
-      // 1. Get location. This will throw an error if not enabled/permitted.
       final position = await locationService.getCurrentLocation();
-
-      // 2. If successful, save it as a GeoPoint
       setState(() {
         _location = GeoPoint(position.latitude, position.longitude);
         _isLocating = false;
       });
-      if (mounted) {
-        showSnackBar(context, "Location captured!");
-      }
+      if (mounted) showSnackBar(context, "Location captured!");
     } on LocationServiceDisabledException {
-      // 3. CATCH THE SPECIFIC ERROR from our location_service.dart
-      if (mounted) {
-        // And call the dialog function (which we added below)
-        await _showEnableLocationDialog();
-      }
+      if (mounted) await _showEnableLocationDialog();
     } catch (e) {
-      // 4. Catch any other errors (like permission denied)
-      if (mounted) {
-        showSnackBar(context, e.toString());
-      }
+      if (mounted) showSnackBar(context, e.toString());
     } finally {
-      // 5. Always stop the loading indicator
-      if (mounted) {
-        setState(() {
-          _isLocating = false;
-        });
-      }
+      if (mounted) setState(() => _isLocating = false);
     }
   }
 
-  /// Shows the dialog to enable location services
+  /// Dialog to enable location
   Future<void> _showEnableLocationDialog() async {
     await showDialog(
       context: context,
@@ -120,14 +102,10 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  /// Handles the entire sign-up process
+  /// ✅ Modified sign-up flow with Gmail OTP
   Future<void> _handleSignUp() async {
-    // 1. Validate the form
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    // 2. Check that location has been captured
     if (_location == null) {
       showSnackBar(context, "Please capture your location first.");
       return;
@@ -137,44 +115,38 @@ class _SignupScreenState extends State<SignupScreen> {
       _isLoading = true;
     });
 
-    // 3. Get the Auth service
-    final authService = Provider.of<AuthService>(context, listen: false);
-
-    // 4. Create the Vehicle Data Map
     Map<String, dynamic> vehicleData = {
       'type': _vehicleType,
       'brand': _brandController.text.trim(),
       'model': _modelController.text.trim(),
     };
 
-    // 5. Call the signUpWithEmail function
-    String? error = await authService.signUpWithEmail(
-      email: _emailController.text.trim(),
-      password: _passwordController.text.trim(),
-      name: _nameController.text.trim(),
-      phone: _phoneController.text.trim(),
-      location: _location!, // We know _location is not null here
-      vehicleData: vehicleData,
-    );
-
+    // ✅ STEP 1: Send OTP using EmailJS
+    final otp = await EmailService.sendOtpEmail(_emailController.text.trim());
     setState(() {
       _isLoading = false;
     });
 
-    // 6. Handle the response
-    if (error == null) {
-      // Success!
-      showSnackBar(context, "Account created successfully!");
-      if (mounted) {
-        // Pop back to the Login Screen
-        Navigator.of(context).pop();
-      }
-    } else {
-      // Failure
-      if (mounted) {
-        showSnackBar(context, error);
-      }
+    if (otp == null) {
+      showSnackBar(context, "Failed to send OTP. Try again.");
+      return;
     }
+
+    // ✅ STEP 2: Navigate to OTP Verification screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OtpVerificationScreen(
+          email: _emailController.text.trim(),
+          otp: otp,
+          name: _nameController.text.trim(),
+          phone: _phoneController.text.trim(),
+          password: _passwordController.text.trim(),
+          location: _location!,
+          vehicleData: vehicleData,
+        ),
+      ),
+    );
   }
 
   @override
@@ -193,7 +165,6 @@ class _SignupScreenState extends State<SignupScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // --- Personal Details ---
                 const Text('Personal Details',
                     style:
                     TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -241,11 +212,9 @@ class _SignupScreenState extends State<SignupScreen> {
                   decoration: InputDecoration(
                     labelText: 'Password (min. 6 chars) *',
                     suffixIcon: IconButton(
-                      icon: Icon(
-                        _isPasswordVisible
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-                      ),
+                      icon: Icon(_isPasswordVisible
+                          ? Icons.visibility_off
+                          : Icons.visibility),
                       onPressed: () {
                         setState(() {
                           _isPasswordVisible = !_isPasswordVisible;
@@ -270,11 +239,9 @@ class _SignupScreenState extends State<SignupScreen> {
                   decoration: InputDecoration(
                     labelText: 'Confirm Password *',
                     suffixIcon: IconButton(
-                      icon: Icon(
-                        _isConfirmPasswordVisible
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-                      ),
+                      icon: Icon(_isConfirmPasswordVisible
+                          ? Icons.visibility_off
+                          : Icons.visibility),
                       onPressed: () {
                         setState(() {
                           _isConfirmPasswordVisible =
@@ -296,26 +263,20 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // --- Vehicle Details ---
                 const Text('Vehicle Details',
                     style:
                     TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
                   value: _vehicleType,
-                  decoration: const InputDecoration(labelText: 'Vehicle Type *'),
+                  decoration:
+                  const InputDecoration(labelText: 'Vehicle Type *'),
                   items: ['2-wheeler', '4-wheeler']
-                      .map((type) => DropdownMenuItem(
-                    value: type,
-                    child: Text(type),
-                  ))
+                      .map((type) =>
+                      DropdownMenuItem(value: type, child: Text(type)))
                       .toList(),
                   onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        _vehicleType = value;
-                      });
-                    }
+                    if (value != null) setState(() => _vehicleType = value);
                   },
                 ),
                 const SizedBox(height: 16),
@@ -323,9 +284,8 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _brandController,
                   decoration: const InputDecoration(
                       labelText: 'Vehicle Brand (e.g., Tata, Ola) *'),
-                  validator: (value) => value == null || value.isEmpty
-                      ? 'Brand is required'
-                      : null,
+                  validator: (value) =>
+                  value == null || value.isEmpty ? 'Brand is required' : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -337,7 +297,6 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // --- Location ---
                 const Text('Your Location',
                     style:
                     TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -367,7 +326,8 @@ class _SignupScreenState extends State<SignupScreen> {
                           ? const SizedBox(
                         height: 24,
                         width: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child:
+                        CircularProgressIndicator(strokeWidth: 2),
                       )
                           : IconButton(
                         icon: const Icon(Icons.my_location,
@@ -379,7 +339,6 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 30),
 
-                // --- Create Account Button ---
                 ElevatedButton(
                   onPressed: _isLoading ? null : _handleSignUp,
                   child: _isLoading
@@ -399,5 +358,3 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 }
-
-
