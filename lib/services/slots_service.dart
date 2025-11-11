@@ -2,86 +2,109 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SlotsService {
-  final FirebaseFirestore _fs = FirebaseFirestore.instance;
+  final _fs = FirebaseFirestore.instance;
 
-  /// Create slots for one station for a given day range (local time → stored as UTC)
-  /// Example: 09:00–21:00 every 30 mins → creates 24 slots.
+  /// Path helper
+  CollectionReference<Map<String, dynamic>> _slotsCol(String stationId) =>
+      _fs.collection('stations').doc(stationId).collection('slots');
+
+  /// Generate slots for a given day (idempotent: won't duplicate same startTime)
   Future<void> generateDailySlots({
     required String stationId,
-    required DateTime day,          // local date (only Y-M-D used)
-    int startHour = 9,              // 09:00
-    int endHour = 21,               // 21:00
-    int intervalMinutes = 30,
+    required DateTime day,
+    required int startHour, // e.g., 9
+    required int endHour,   // e.g., 21  (exclusive)
+    required int intervalMinutes, // e.g., 30
   }) async {
-    final start = DateTime(day.year, day.month, day.day, startHour).toUtc();
-    final end = DateTime(day.year, day.month, day.day, endHour).toUtc();
-
+    final dateOnly = DateTime(day.year, day.month, day.day);
     final batch = _fs.batch();
-    final slotsCol = _fs.collection('stations').doc(stationId).collection('slots');
 
-    for (DateTime t = start; t.isBefore(end); t = t.add(Duration(minutes: intervalMinutes))) {
-      final slotId = t.toIso8601String();                       // stable id
-      final ref = slotsCol.doc(slotId);
-      batch.set(ref, {
-        'startTime': Timestamp.fromDate(t),
-        'endTime': Timestamp.fromDate(t.add(Duration(minutes: intervalMinutes))),
-        'status': 'available',         // available | booked
-        'bookedBy': null,
-        'bookedAt': null,
-      }, SetOptions(merge: true));
+    DateTime t = DateTime(day.year, day.month, day.day, startHour);
+    final end = DateTime(day.year, day.month, day.day, endHour);
+
+    while (t.isBefore(end)) {
+      final start = t;
+      final finish = t.add(Duration(minutes: intervalMinutes));
+      final q = await _slotsCol(stationId)
+          .where('startTime', isEqualTo: Timestamp.fromDate(start.toUtc()))
+          .limit(1)
+          .get();
+
+      // only create if not exists
+      if (q.docs.isEmpty) {
+        final doc = _slotsCol(stationId).doc();
+        batch.set(doc, {
+          'startTime': Timestamp.fromDate(start.toUtc()),
+          'endTime': Timestamp.fromDate(finish.toUtc()),
+          'status': 'available',    // 'available' | 'booked'
+          'bookedBy': null,         // uid or null
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+      t = finish;
     }
+
     await batch.commit();
   }
 
-  /// Book a single slot (transaction prevents double-book)
+  /// Book a slot if it's still available (atomic)
   Future<bool> bookSlot({
     required String stationId,
     required String slotId,
     required String uid,
   }) async {
-    final ref = _fs.collection('stations').doc(stationId).collection('slots').doc(slotId);
+    final ref = _slotsCol(stationId).doc(slotId);
     try {
-      final ok = await _fs.runTransaction<bool>((tx) async {
+      await _fs.runTransaction((tx) async {
         final snap = await tx.get(ref);
-        if (!snap.exists) return false;
+        if (!snap.exists) {
+          throw Exception('Slot missing');
+        }
         final data = snap.data() as Map<String, dynamic>;
-        if ((data['status'] as String?) != 'available') return false;
+        if ((data['status'] as String?) != 'available') {
+          throw Exception('Already booked');
+        }
+        // Optional: prevent booking past slots
+        final start = (data['startTime'] as Timestamp).toDate();
+        if (start.isBefore(DateTime.now().toUtc())) {
+          throw Exception('Past slot');
+        }
+
         tx.update(ref, {
           'status': 'booked',
           'bookedBy': uid,
           'bookedAt': FieldValue.serverTimestamp(),
         });
-        return true;
       });
-      return ok;
+      return true;
     } catch (_) {
       return false;
     }
   }
 
-  /// Cancel your own booking
+  /// Cancel only if I’m the owner (atomic)
   Future<bool> cancelBooking({
     required String stationId,
     required String slotId,
     required String uid,
   }) async {
-    final ref = _fs.collection('stations').doc(stationId).collection('slots').doc(slotId);
+    final ref = _slotsCol(stationId).doc(slotId);
     try {
-      final ok = await _fs.runTransaction<bool>((tx) async {
+      await _fs.runTransaction((tx) async {
         final snap = await tx.get(ref);
-        if (!snap.exists) return false;
-        final d = snap.data() as Map<String, dynamic>;
-        if (d['status'] == 'booked' && d['bookedBy'] == uid) {
-          tx.update(ref, {
-            'status': 'available',
-            'bookedBy': null,
-            'bookedAt': null,
-          });
-          return true;
+        if (!snap.exists) throw Exception('Slot missing');
+        final data = snap.data() as Map<String, dynamic>;
+        if ((data['status'] as String?) != 'booked' ||
+            (data['bookedBy'] as String?) != uid) {
+          throw Exception('Not your booking');
         }
-        return false;
+        tx.update(ref, {
+          'status': 'available',
+          'bookedBy': null,
+          'cancelledAt': FieldValue.serverTimestamp(),
+        });
       });
-      return ok;
+      return true;
     } catch (_) {
       return false;
     }

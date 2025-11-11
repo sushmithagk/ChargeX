@@ -1,13 +1,15 @@
 // lib/screens/nearby_screen.dart
 import 'dart:async';
 import 'dart:math';
-import 'package:flutter/material.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+
 import '../api_service.dart';
 import 'package:chargex/screens/station_detail_screen.dart';
-
+import 'package:chargex/utils/map_launcher.dart';
 
 class NearbyScreen extends StatefulWidget {
   const NearbyScreen({super.key});
@@ -68,7 +70,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
     }
   }
 
-
   Future<Position> _loc() async {
     bool enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) await Geolocator.openLocationSettings();
@@ -97,15 +98,16 @@ class _NearbyScreenState extends State<NearbyScreen> {
     double toRad(double d) => d * pi / 180.0;
     final dLat = toRad(lat2 - lat1);
     final dLon = toRad(lon2 - lon1);
-    final a = sin(dLat/2) * sin(dLat/2) +
-        cos(toRad(lat1)) * cos(toRad(lat2)) * sin(dLon/2) * sin(dLon/2);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(toRad(lat1)) * cos(toRad(lat2)) * sin(dLon / 2) * sin(dLon / 2);
     return 2 * R * atan2(sqrt(a), sqrt(1 - a));
   }
 
   void _startLatRangeStream() {
     if (_pos == null) return;
     final box = _bbox(_pos!.latitude, _pos!.longitude, _radiusKm);
-    _latRangeStream = _fs.collection('stations')
+    _latRangeStream = _fs
+        .collection('stations')
         .where('lat', isGreaterThanOrEqualTo: box['minLat'])
         .where('lat', isLessThanOrEqualTo: box['maxLat'])
         .snapshots();
@@ -163,7 +165,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
           if (filtered.isEmpty) return const Center(child: Text('No stations in range'));
 
           filtered.sort((a, b) {
-            final da = a.data(); final db = b.data();
+            final da = a.data();
+            final db = b.data();
             final d1 = _haversineMeters(_pos!.latitude, _pos!.longitude,
                 (da['lat'] ?? 0).toDouble(), (da['lng'] ?? 0).toDouble());
             final d2 = _haversineMeters(_pos!.latitude, _pos!.longitude,
@@ -177,35 +180,82 @@ class _NearbyScreenState extends State<NearbyScreen> {
               final doc = filtered[i];
               final d = doc.data();
               final distM = _haversineMeters(
-                _pos!.latitude, _pos!.longitude,
-                (d['lat'] ?? 0).toDouble(), (d['lng'] ?? 0).toDouble(),
+                _pos!.latitude,
+                _pos!.longitude,
+                (d['lat'] ?? 0).toDouble(),
+                (d['lng'] ?? 0).toDouble(),
               );
               final km = (distM / 1000).toStringAsFixed(2);
 
-              // inside itemBuilder: (_, i) { ... return  ... }
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                child: ListTile(
-                  title: Text((d['name'] ?? filtered[i].id).toString()),
-                  subtitle: Text(
-                    '${d['status'] ?? 'unknown'} • ${d['capacity'] ?? 0} connectors • ${_fmtTs(d['lastUpdated'] as Timestamp?)}',
-                  ),
-                  trailing: Text('$km km'),
-
-                  // ✅ ADD THIS TAP HANDLER
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => StationDetailScreen(
-                          stationId: filtered[i].id,
-                          stationName: (d['name'] ?? filtered[i].id).toString(),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Left side (Name + Status)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              (d['name'] ?? filtered[i].id).toString(),
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${d['status'] ?? 'unknown'} • ${d['capacity'] ?? 0} connectors • ${_fmtTs(d['lastUpdated'] as Timestamp?)}',
+                              style: TextStyle(color: Colors.grey[300]),
+                            ),
+                          ],
                         ),
                       ),
-                    );
-                  },
+
+                      // Right side (distance + buttons)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text('$km km', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+
+                          // Buttons Row
+                          Row(
+                            children: [
+                              OutlinedButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => StationDetailScreen(
+                                        stationId: doc.id,
+                                        stationName: (d['name'] ?? filtered[i].id).toString(),
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: const Text('Slots', style: TextStyle(fontSize: 12)),
+                              ),
+                              const SizedBox(width: 6),
+                              ElevatedButton(
+                                onPressed: () {
+                                  MapLauncher.openMap(
+                                    lat: (d['lat'] ?? 0).toDouble(),
+                                    lng: (d['lng'] ?? 0).toDouble(),
+                                  );
+                                },
+                                child: const Text('Navigate', style: TextStyle(fontSize: 12)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               );
+
+
 
 
             },
