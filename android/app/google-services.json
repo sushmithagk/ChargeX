@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "408006768938-hpce9od6imlrk6acv2q0893ov9elgt2r.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.chargex",
+            "certificate_hash": "28758dc3ace935c758eae92bde4b1484020f3896"
+          }
+        },
+        {
           "client_id": "408006768938-5mkdfscpkcma6stegpkjro23s5g9fkhg.apps.googleusercontent.com",
           "client_type": 3
         }

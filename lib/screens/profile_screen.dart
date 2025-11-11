@@ -106,10 +106,7 @@ class ProfileScreen extends StatelessWidget {
 
       // TODO: Replace this with a real Map Button
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // TODO: Navigate to Sneha's MapScreen
-          showSnackBar(context, "Map Screen not implemented yet.");
-        },
+        onPressed: () => Navigator.pushNamed(context, '/nearby'),
         label: const Text('Find Stations'),
         icon: const Icon(Icons.map_outlined),
       ),

@@ -13,6 +13,11 @@ dependencies:
 #   for email authentication
   http: ^1.2.0
 
+  intl: ^0.18.0
+
+
+
+
   # --- ALL YOUR PROJECT PACKAGES GO HERE ---
 
   # Firebase
