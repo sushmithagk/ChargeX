@@ -19,63 +19,53 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: authService.user,
       builder: (context, authSnapshot) {
-        // 🕒 Wait for Firebase Auth to initialize
         if (authSnapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        // 🚪 CASE 1: User is logged out
+        // 🚪 Not logged in
         if (!authSnapshot.hasData || authSnapshot.data == null) {
           return const LoginScreen();
         }
 
         final loggedInUser = authSnapshot.data!;
+        bool isGoogleUser = loggedInUser.providerData
+            .any((p) => p.providerId == 'google.com');
+        bool isEmailUser = loggedInUser.providerData
+            .any((p) => p.providerId == 'password');
 
-        // 🚫 CASE 2: Invalid or incomplete user (safety check)
-        if (loggedInUser.uid.isEmpty || loggedInUser.email == null) {
-          return const LoginScreen();
-        }
-
-        // 🔍 CASE 3: Fetch Firestore user document
         return FutureBuilder<UserModel?>(
           future: dbService.getUser(loggedInUser.uid),
           builder: (context, userDocSnapshot) {
             if (userDocSnapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
 
             final userData = userDocSnapshot.data;
 
-            // 🟠 CASE 4: No Firestore user record found (very rare)
-            if (userData == null) {
+            // 🟡 Case 1: New Google user with no Firestore data
+            if (isGoogleUser && userData == null) {
               return const CompleteProfileScreen();
             }
 
-            // 🔍 Identify login method
-            bool isGoogleUser = loggedInUser.providerData
-                .any((provider) => provider.providerId == 'google.com');
-
-            bool isEmailUser = loggedInUser.providerData
-                .any((provider) => provider.providerId == 'password');
-
-            // 🟡 CASE 5: Google user but missing details
+            // 🟡 Case 2: Google user but incomplete data
             if (isGoogleUser &&
+                userData != null &&
                 (userData.vehicleType == 'Not set' ||
                     userData.vehicleBrand == 'Not set' ||
                     userData.vehicleModel == 'Not set')) {
               return const CompleteProfileScreen();
             }
 
-            // 🟢 CASE 6: Email user or complete Google user
-            if (isEmailUser || !isGoogleUser) {
+            // 🟢 Case 3: Email user with complete data
+            if (isEmailUser) return const ProfileScreen();
+
+            // 🟢 Case 4: Returning Google user with complete data
+            if (isGoogleUser && userData != null) {
               return const ProfileScreen();
             }
 
-            // 🧩 Default fallback (shouldn’t happen)
+            // Default
             return const LoginScreen();
           },
         );
