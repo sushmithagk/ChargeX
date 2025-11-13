@@ -25,7 +25,7 @@ class _SplashScreenState extends State<SplashScreen> {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             // Removed 'const' from 'AuthWrapper()'
-            builder: (context) => AuthWrapper(),
+            builder: (context) => const AuthWrapper(),
           ),
         );
       }

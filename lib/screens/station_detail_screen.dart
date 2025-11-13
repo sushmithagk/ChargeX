@@ -180,11 +180,11 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                               ),
                             );
                           },
-                          child: const Text('Book'),
                           style: ElevatedButton.styleFrom(
                             minimumSize: const Size(72, 36),
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
+                          child: const Text('Book'),
                         ),
                       );
                     } else if (status == 'booked' && isMine) {
@@ -195,7 +195,7 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                             final ok = await _slots.cancelBooking(
                               stationId: widget.stationId,
                               slotId: docs[i].id,
-                              uid: uid!,
+                              uid: uid,
                             );
                             if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -205,11 +205,11 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                               ),
                             );
                           },
-                          child: const Text('Cancel'),
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size(72, 36),
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
+                          child: const Text('Cancel'),
                         ),
                       );
                     } else {

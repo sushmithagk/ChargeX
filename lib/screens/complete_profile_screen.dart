@@ -194,7 +194,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
               const SizedBox(height: 12),
 
               DropdownButtonFormField<String>(
-                value: _vehicleType,
+                initialValue: _vehicleType,
                 items: ['2-wheeler', '4-wheeler']
                     .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                     .toList(),

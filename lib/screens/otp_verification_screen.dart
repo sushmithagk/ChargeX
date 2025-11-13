@@ -1,4 +1,3 @@
-import 'package:chargex/models/user_model.dart';
 import 'package:chargex/services/auth_service.dart';
 import 'package:chargex/utils/show_snack_bar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
