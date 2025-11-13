@@ -2,11 +2,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Clipboard
 import 'package:intl/intl.dart';
 
 class MyBookingsScreen extends StatefulWidget {
-  const MyBookingsScreen({Key? key}) : super(key: key);
+  const MyBookingsScreen({super.key});
 
   @override
   State<MyBookingsScreen> createState() => _MyBookingsScreenState();
@@ -15,197 +14,154 @@ class MyBookingsScreen extends StatefulWidget {
 class _MyBookingsScreenState extends State<MyBookingsScreen> {
   final _fs = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
-  late final String? _uid;
 
-  @override
-  void initState() {
-    super.initState();
-    _uid = _auth.currentUser?.uid;
-  }
-
-  String _formatSlot(DateTime dtStart, DateTime dtEnd) {
-    final f = DateFormat('EEE, dd MMM • hh:mm a');
-    return '${f.format(dtStart)} → ${DateFormat('hh:mm a').format(dtEnd)}';
-  }
-
-  /// We query collection-group 'slots' only by bookedBy equality.
-  /// This avoids composite index requirements. We then filter status
-  /// client-side to only show booked slots.
-  Stream<QuerySnapshot<Map<String, dynamic>>>? _bookingsStream() {
-    if (_uid == null) return null;
-    return _fs.collectionGroup('slots').where('bookedBy', isEqualTo: _uid).snapshots();
-  }
-
-  Future<void> _cancelBooking(DocumentReference slotRef) async {
+  // helper - format timestamp safely
+  String _fmtTs(Timestamp? t) {
+    if (t == null) return '-';
     try {
-      // revert slot to available; remove bookedBy
-      await slotRef.update({
-        'status': 'available',
-        'bookedBy': FieldValue.delete(),
-      });
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking cancelled.')));
-    } on FirebaseException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cancel failed: ${e.message}')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cancel failed: $e')));
+      final dt = t.toDate().toLocal();
+      return DateFormat('EEE, dd MMM • hh:mm a').format(dt);
+    } catch (_) {
+      return '-';
     }
   }
 
-  Future<void> _copyToClipboard(String text) async {
-    await Clipboard.setData(ClipboardData(text: text));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied to clipboard')));
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _bookingStreamForUid(String uid) {
+    // Collection group query: all 'slots' docs across subcollections
+    // WARNING: this exact query (where + orderBy) requires a composite index in Firestore.
+    return _fs
+        .collectionGroup('slots')
+        .where('bookedBy', isEqualTo: uid)
+        .orderBy('startTime')
+        .snapshots();
   }
 
   @override
   Widget build(BuildContext context) {
-    final uid = _uid;
-    if (uid == null) {
+    final user = _auth.currentUser;
+    if (user == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('My Bookings')),
-        body: const Center(child: Text('You must be signed in to see bookings.')),
+        body: const Center(child: Text('Please sign in to see your bookings.')),
       );
     }
 
-    final stream = _bookingsStream();
+    final uid = user.uid;
+    final stream = _bookingStreamForUid(uid);
 
     return Scaffold(
       appBar: AppBar(title: const Text('My Bookings')),
-      body: stream == null
-          ? const Center(child: Text('No bookings (not signed in).'))
-          : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: stream,
         builder: (context, snap) {
           if (snap.hasError) {
-            // Show helpful message but keep concise
+            // Show helpful error: Firestore often provides an index-creation URL in the message
+            final err = snap.error.toString();
             return Padding(
               padding: const EdgeInsets.all(16.0),
               child: SingleChildScrollView(
                 child: Text(
-                  'Error loading bookings: ${snap.error}',
+                  'Error loading bookings: $err\n\n'
+                      'If the error mentions an index, open the URL the error suggests in the Firebase Console, create the composite collection-group index for collection "slots" (bookedBy + startTime), wait for it to build, then restart the app.',
                   style: const TextStyle(color: Colors.red),
                 ),
               ),
             );
           }
+
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          // Only show docs where status == 'booked' (client-side filter)
-          final allDocs = snap.data!.docs;
-          final bookedDocs = allDocs.where((d) {
-            final map = d.data();
-            final status = map['status'];
-            // status might be null or non-string; handle safely
-            return status != null && status.toString().toLowerCase() == 'booked';
-          }).toList();
-
-          if (bookedDocs.isEmpty) {
+          final docs = snap.data!.docs;
+          if (docs.isEmpty) {
             return const Center(child: Text('No bookings yet.'));
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: bookedDocs.length,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            itemCount: docs.length,
             itemBuilder: (context, i) {
-              final doc = bookedDocs[i];
-              final data = doc.data();
+              final doc = docs[i];
+              final d = doc.data();
 
-              // startTime / endTime may be Timestamp or null
-              DateTime? start;
-              DateTime? end;
-              final s = data['startTime'];
-              final e = data['endTime'];
-              if (s is Timestamp) start = s.toDate().toLocal();
-              if (e is Timestamp) end = e.toDate().toLocal();
-
-              // Station info: prefer a stationName field in the slot doc;
-              // otherwise try to derive the parent station id from the doc ref path.
-              String stationLabel = '';
-              if (data.containsKey('stationName') && data['stationName'] != null) {
-                stationLabel = data['stationName'].toString();
-              } else {
-                // slot document path: /stations/{stationId}/slots/{slotId}
-                final parent = doc.reference.parent.parent;
-                stationLabel = parent?.id ?? '(unknown station)';
+              // Defensive parsing for fields that may not be strictly typed:
+              String slotId = doc.id;
+              // stationId from path: .../stations/{stationId}/slots/{slotId}
+              String? stationId;
+              try {
+                stationId = doc.reference.parent.parent?.id;
+              } catch (_) {
+                stationId = null;
               }
 
-              final slotId = doc.id;
-              final statusText = (data['status'] ?? '').toString().toUpperCase();
+              // If you stored stationName inside slot doc, use it; otherwise show stationId
+              String stationName = '';
+              final rawName = d['stationName'];
+              if (rawName is String && rawName.isNotEmpty) {
+                stationName = rawName;
+              } else if (stationId != null) {
+                stationName = stationId;
+              } else {
+                stationName = 'Station';
+              }
+
+              // start and end times
+              Timestamp? tStart = d['startTime'] as Timestamp?;
+              Timestamp? tEnd = d['endTime'] as Timestamp?;
+              final startStr = _fmtTs(tStart);
+              final endStr = tEnd == null ? '-' : DateFormat('hh:mm a').format(tEnd.toDate().toLocal());
+
+              // bookedBy may sometimes be stored as list or string depending on earlier bugs: handle both
+              String? bookedBy;
+              final rawBooked = d['bookedBy'];
+              if (rawBooked is String) {
+                bookedBy = rawBooked;
+              } else if (rawBooked is List && rawBooked.isNotEmpty) {
+                bookedBy = rawBooked.first?.toString();
+              } else {
+                bookedBy = null;
+              }
+
+              final status = (d['status'] is String) ? (d['status'] as String) : (d['status']?.toString() ?? 'unknown');
 
               return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // top row: station label + actions
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              stationLabel,
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                          // small copy button for slot id
-                          IconButton(
-                            onPressed: () => _copyToClipboard(slotId),
-                            icon: const Icon(Icons.copy_outlined, size: 20),
-                            tooltip: 'Copy slot id',
-                          ),
-                        ],
+                      Text(
+                        stationName,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                       ),
-
                       const SizedBox(height: 8),
-
-                      // times
-                      if (start != null && end != null)
-                        Text(
-                          _formatSlot(start, end),
-                          style: const TextStyle(fontSize: 14),
-                        )
-                      else
-                        const Text('-', style: TextStyle(fontSize: 14)),
-
+                      Text('$startStr → $endStr'),
                       const SizedBox(height: 8),
-
-                      // status + actions
+                      Text('Status: ${status.toUpperCase()}'),
+                      const SizedBox(height: 8),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Text('Status: $statusText', style: const TextStyle(fontWeight: FontWeight.w500)),
-                          Row(
-                            children: [
-                              OutlinedButton(
-                                onPressed: () async {
-                                  // confirm cancel
-                                  final ok = await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: const Text('Cancel booking'),
-                                      content: const Text('Are you sure you want to cancel this booking?'),
-                                      actions: [
-                                        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('No')),
-                                        TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Yes')),
-                                      ],
-                                    ),
-                                  );
-                                  if (ok == true) {
-                                    await _cancelBooking(doc.reference);
-                                  }
-                                },
-                                child: const Text('Cancel'),
-                              ),
-                            ],
-                          ),
+                          if (bookedBy != null && bookedBy == uid)
+                            OutlinedButton(
+                              onPressed: () async {
+                                // cancel booking: set bookedBy to null and status to 'available'
+                                try {
+                                  await doc.reference.update({
+                                    'bookedBy': FieldValue.delete(),
+                                    'status': 'available',
+                                  });
+                                  if (!mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking cancelled')));
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cancel failed: $e')));
+                                }
+                              },
+                              child: const Text('Cancel'),
+                            ),
                         ],
                       ),
                     ],
