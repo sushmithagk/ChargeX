@@ -1,4 +1,3 @@
-import 'package:chargex/screens/auth_wrapper.dart';
 import 'package:chargex/services/auth_service.dart';
 import 'package:chargex/utils/show_snack_bar.dart';
 import 'package:flutter/material.dart';

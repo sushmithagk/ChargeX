@@ -1,6 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:chargex/services/auth_service.dart';
-import 'package:chargex/services/database_service.dart';
 import 'package:chargex/utils/show_snack_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -268,7 +266,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _vehicleType,
+                  initialValue: _vehicleType,
                   decoration:
                   const InputDecoration(labelText: 'Vehicle Type *'),
                   items: ['2-wheeler', '4-wheeler']

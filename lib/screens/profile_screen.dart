@@ -96,17 +96,27 @@ class ProfileScreen extends StatelessWidget {
             icon: const Icon(Icons.calendar_month),
           ),
           const SizedBox(height: 10),
+
           FloatingActionButton.extended(
             onPressed: () => Navigator.pushNamed(context, '/nearby'),
             label: const Text('Find Stations'),
             icon: const Icon(Icons.map_outlined),
+          ),
+          const SizedBox(height: 10),
+
+          // ⭐ Added Trip Planner Button
+          FloatingActionButton.extended(
+            onPressed: () => Navigator.pushNamed(context, '/trip'),
+            label: const Text('Trip Planner'),
+            icon: const Icon(Icons.alt_route),
           ),
         ],
       ),
     );
   }
 
-  // --- Helpers (These were missing) ---
+  // --- Helpers ---
+
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0, top: 16.0),
@@ -120,7 +130,6 @@ class ProfileScreen extends StatelessWidget {
       ),
     );
   }
-
 
   Widget _buildInfoTile({
     required IconData icon,
@@ -139,4 +148,3 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 }
-//i had changed the profile_screen.dart for implementation of map
