@@ -322,8 +322,14 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking failed. Try again.')));
                             }
                           },
-                          child: const Text('Book'),
-                          style: ElevatedButton.styleFrom(minimumSize: const Size(72, 36)),
+                          child: const Text(
+                            'Book',
+                            style: TextStyle(color: Colors.white),  // <-- FIXED
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(72, 36),
+                            backgroundColor: Colors.blue,          // <-- visible button color
+                          ),
                         ),
                       );
                     }
@@ -348,4 +354,3 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
     );
   }
 }
-

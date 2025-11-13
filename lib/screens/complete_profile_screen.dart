@@ -1,4 +1,5 @@
 import 'package:chargex/models/user_model.dart';
+import 'package:chargex/screens/profile_screen.dart';
 import 'package:chargex/services/auth_service.dart';
 import 'package:chargex/services/database_service.dart';
 import 'package:chargex/services/location_service.dart';
@@ -124,12 +125,25 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
         createdAt: Timestamp.now(),
       );
 
+      // // Save to Firestore
+      // await dbService.updateUser(updatedUser);
+      //
+      // if (mounted) {
+      //   showSnackBar(context, "Profile updated successfully!");
+      //   Navigator.pop(context); // Go back to profile screen
+      // }
+
       // Save to Firestore
       await dbService.updateUser(updatedUser);
 
       if (mounted) {
         showSnackBar(context, "Profile updated successfully!");
-        Navigator.pop(context); // Go back to profile screen
+
+        // 🔥 Redirect Google users to profile screen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const ProfileScreen()),
+        );
       }
     } catch (e) {
       showSnackBar(context, "Error updating profile: $e");

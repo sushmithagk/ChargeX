@@ -21,9 +21,23 @@ class ProfileScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Sign Out',
-            onPressed: () {
-              authService.signOut();
+
+            onPressed: () async {
+              final auth = Provider.of<AuthService>(context, listen: false);
+
+              print("Before logout: ${auth.currentUser?.email}");
+
+              await auth.signOut();
+
+              print("After logout: ${auth.currentUser}");
+
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/',
+                    (route) => false,
+              );
             },
+
           )
         ],
       ),
@@ -90,12 +104,12 @@ class ProfileScreen extends StatelessWidget {
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          FloatingActionButton.extended(
-            onPressed: () => Navigator.pushNamed(context, '/my-bookings'),
-            label: const Text('My Bookings'),
-            icon: const Icon(Icons.calendar_month),
-          ),
-          const SizedBox(height: 10),
+          // FloatingActionButton.extended(
+          //   onPressed: () => Navigator.pushNamed(context, '/my-bookings'),
+          //   label: const Text('My Bookings'),
+          //   icon: const Icon(Icons.calendar_month),
+          // ),
+          // const SizedBox(height: 10),
 
           FloatingActionButton.extended(
             onPressed: () => Navigator.pushNamed(context, '/nearby'),
