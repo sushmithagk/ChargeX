@@ -23,20 +23,75 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
+
+  /// BRAND / MODEL Controllers
   final TextEditingController _brandController = TextEditingController();
   final TextEditingController _modelController = TextEditingController();
 
   String _vehicleType = '2-wheeler';
-  GeoPoint? _location;
+  String? _selectedBrand;
+  String? _selectedModel;
 
+  bool _isOtherBrand = false;
+  bool _isOtherModel = false;
+
+  GeoPoint? _location;
   bool _isLoading = false;
   bool _isLocating = false;
 
+  // ---------------------------------------------------------------------
+  // VEHICLE BRAND + MODEL DATA
+  // ---------------------------------------------------------------------
+
+  final Map<String, List<String>> vehicleBrands = {
+    '2-wheeler': [
+      'Ola Electric',
+      'Ather Energy',
+      'TVS Motor',
+      'Bajaj',
+      'Hero Electric',
+      'Other'
+    ],
+    '4-wheeler': [
+      'Tata Motors',
+      'Mahindra',
+      'MG Motor',
+      'BYD',
+      'Hyundai',
+      'Kia',
+      'Other'
+    ],
+  };
+
+  final Map<String, List<String>> vehicleModels = {
+    // 2-wheelers
+    'Ola Electric': ['S1 Pro', 'S1 Pro+', 'S1 X', 'S1 Air'],
+    'Ather Energy': ['450X', '450S', 'Rizta'],
+    'TVS Motor': ['iQube', 'iQube S', 'iQube ST'],
+    'Bajaj': ['Chetak Electric'],
+    'Hero Electric': ['Vida VX2'],
+
+    // 4-wheelers
+    'Tata Motors': [
+      'Nexon EV',
+      'Tiago EV',
+      'Punch EV',
+      'Tigor EV',
+      'Curvv EV',
+      'Harrier EV'
+    ],
+    'Mahindra': ['BE 6', 'XUV 400', 'XEV 9e'],
+    'MG Motor': ['ZS EV', 'Windsor EV'],
+    'BYD': ['Atto 3', 'SEAL'],
+    'Hyundai': ['Kona Electric', 'IONIQ 5'],
+    'Kia': ['EV6'],
+  };
+
+  // ---------------------------------------------------------------------
   @override
   void initState() {
     super.initState();
 
-    // Prefill details from Firebase user (if available)
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       _nameController.text = user.displayName ?? '';
@@ -45,10 +100,12 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------
   Future<void> _getUserLocation() async {
     setState(() => _isLocating = true);
 
     final locationService = context.read<LocationService>();
+
 
     try {
       final position = await locationService.getCurrentLocation();
@@ -92,6 +149,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -112,34 +170,28 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
         return;
       }
 
-      // Create an updated user model
+      final brand =
+      _isOtherBrand ? _brandController.text.trim() : _selectedBrand!;
+      final model =
+      _isOtherModel ? _modelController.text.trim() : _selectedModel!;
+
       final updatedUser = UserModel(
         uid: user.uid,
         displayName: _nameController.text.trim(),
         email: _emailController.text.trim(),
         phoneNumber: _phoneController.text.trim(),
         vehicleType: _vehicleType,
-        vehicleBrand: _brandController.text.trim(),
-        vehicleModel: _modelController.text.trim(),
+        vehicleBrand: brand,
+        vehicleModel: model,
         lastKnownLocation: _location!,
         createdAt: Timestamp.now(),
       );
 
-      // // Save to Firestore
-      // await dbService.updateUser(updatedUser);
-      //
-      // if (mounted) {
-      //   showSnackBar(context, "Profile updated successfully!");
-      //   Navigator.pop(context); // Go back to profile screen
-      // }
-
-      // Save to Firestore
       await dbService.updateUser(updatedUser);
 
       if (mounted) {
         showSnackBar(context, "Profile updated successfully!");
 
-        // 🔥 Redirect Google users to profile screen
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const ProfileScreen()),
@@ -152,12 +204,11 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Complete Your Profile"),
-      ),
+      appBar: AppBar(title: const Text("Complete Your Profile")),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Form(
@@ -171,7 +222,10 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
               ),
               const SizedBox(height: 20),
 
-              // --- Personal Info ---
+              // ---------------------------------------------------------------------
+              // PERSONAL DETAILS
+              // ---------------------------------------------------------------------
+
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Full Name *'),
@@ -194,51 +248,116 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
 
               TextFormField(
                 controller: _phoneController,
-                decoration:
-                const InputDecoration(labelText: 'Phone Number *', prefixText: '+91 '),
+                decoration: const InputDecoration(
+                    labelText: 'Phone Number *', prefixText: '+91 '),
                 keyboardType: TextInputType.phone,
                 validator: (v) =>
                 v == null || v.length < 10 ? "Enter valid number" : null,
               ),
-              const SizedBox(height: 24),
 
-              // --- Vehicle Info ---
+              // ---------------------------------------------------------------------
+              // VEHICLE DETAILS
+              // ---------------------------------------------------------------------
+
+              const SizedBox(height: 24),
               const Text("Vehicle Details",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
 
+              // VEHICLE TYPE
               DropdownButtonFormField<String>(
-                initialValue: _vehicleType,
+                value: _vehicleType,
                 items: ['2-wheeler', '4-wheeler']
                     .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                     .toList(),
-                onChanged: (val) => setState(() => _vehicleType = val!),
+                onChanged: (value) {
+                  setState(() {
+                    _vehicleType = value!;
+                    _selectedBrand = null;
+                    _selectedModel = null;
+                    _isOtherBrand = false;
+                    _isOtherModel = false;
+                  });
+                },
                 decoration: const InputDecoration(labelText: 'Vehicle Type *'),
               ),
               const SizedBox(height: 16),
 
-              TextFormField(
-                controller: _brandController,
-                decoration:
-                const InputDecoration(labelText: 'Vehicle Brand *'),
-                validator: (v) =>
-                v == null || v.isEmpty ? "Brand is required" : null,
+              // BRAND DROPDOWN
+              DropdownButtonFormField<String>(
+                value: _selectedBrand,
+                decoration: const InputDecoration(labelText: 'Vehicle Brand *'),
+                items: vehicleBrands[_vehicleType]!
+                    .map((b) => DropdownMenuItem(value: b, child: Text(b)))
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedBrand = value;
+                    _isOtherBrand = value == 'Other';
+                    _selectedModel = null;
+                    _isOtherModel = false;
+                  });
+                },
+                validator: (v) {
+                  if (!_isOtherBrand && (v == null || v.isEmpty)) {
+                    return "Select brand";
+                  }
+                  return null;
+                },
               ),
+
+              if (_isOtherBrand)
+                TextFormField(
+                  controller: _brandController,
+                  decoration: const InputDecoration(labelText: 'Enter Brand *'),
+                  validator: (v) =>
+                  v == null || v.isEmpty ? "Brand required" : null,
+                ),
+
               const SizedBox(height: 16),
 
-              TextFormField(
-                controller: _modelController,
-                decoration:
-                const InputDecoration(labelText: 'Vehicle Model *'),
-                validator: (v) =>
-                v == null || v.isEmpty ? "Model is required" : null,
-              ),
-              const SizedBox(height: 24),
+              // MODEL DROPDOWN
+              if (!_isOtherBrand)
+                DropdownButtonFormField<String>(
+                  value: _selectedModel,
+                  decoration:
+                  const InputDecoration(labelText: 'Vehicle Model *'),
+                  items: (vehicleModels[_selectedBrand] ?? ['Other'])
+                      .map((m) =>
+                      DropdownMenuItem(value: m, child: Text(m)))
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedModel = value;
+                      _isOtherModel = value == 'Other';
+                    });
+                  },
+                  validator: (v) {
+                    if (!_isOtherModel && (v == null || v.isEmpty)) {
+                      return "Select model";
+                    }
+                    return null;
+                  },
+                ),
 
-              // --- Location ---
+              if (_isOtherModel)
+                TextFormField(
+                  controller: _modelController,
+                  decoration:
+                  const InputDecoration(labelText: 'Enter Model *'),
+                  validator: (v) =>
+                  v == null || v.isEmpty ? "Model required" : null,
+                ),
+
+              // ---------------------------------------------------------------------
+              // LOCATION
+              // ---------------------------------------------------------------------
+
+              const SizedBox(height: 24),
               const Text("Your Location",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
+
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -274,18 +393,20 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 30),
 
-              // --- Save Button ---
+              // ---------------------------------------------------------------------
+              // SAVE BUTTON
+              // ---------------------------------------------------------------------
+
+              const SizedBox(height: 30),
               ElevatedButton(
                 onPressed: _isLoading ? null : _saveProfile,
                 child: _isLoading
                     ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
                     : const Text("Save Profile"),
               ),
             ],
