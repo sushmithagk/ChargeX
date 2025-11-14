@@ -160,7 +160,37 @@ class AuthService {
   // 🔹 SIGN-OUT
   // -------------------------------------------------------------------------
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
-    await _auth.signOut();
+    try {
+      debugPrint('SIGNOUT STARTED');
+
+      // 1️⃣ Try normal Google signOut
+      try {
+        await _googleSignIn.signOut();
+        debugPrint('Google signOut success');
+      } catch (e) {
+        debugPrint('Google signOut failed: $e');
+      }
+
+      // 2️⃣ Try Google disconnect (removes cached session)
+      try {
+        await _googleSignIn.disconnect();
+        debugPrint('Google disconnect success');
+      } catch (e) {
+        debugPrint('Google disconnect failed (OK to ignore): $e');
+      }
+
+      // 3️⃣ Firebase signOut
+      await _auth.signOut();
+      debugPrint('Firebase signOut success');
+
+      // 4️⃣ Small delay to make sure AuthWrapper receives NULL
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      debugPrint('Current user after signOut = ${_auth.currentUser}');
+    } catch (e, st) {
+      debugPrint('SIGNOUT ERROR: $e\n$st');
+    }
   }
+
+
 }
