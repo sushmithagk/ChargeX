@@ -229,11 +229,16 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking failed. Try again.')));
                             }
                           },
-                          child: const Text('Book'),
-                          style: ElevatedButton.styleFrom(
-                            minimumSize: const Size(72, 36),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          child: const Text(
+                            'Book',
+                            style: TextStyle(fontSize: 14, height: 1.2), // prevents text from cutting
                           ),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(72, 42),   // increased height
+                            padding: const EdgeInsets.symmetric(vertical: 8), // balanced padding
+                            alignment: Alignment.center,        // proper alignment
+                          ),
+
                         ),
                       );
                     } else if (status == 'booked' && isMine) {
