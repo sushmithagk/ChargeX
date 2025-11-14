@@ -114,7 +114,7 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
 
               return ListTile(
                 title: Text(name),
-                subtitle: Text('$status • $cap connectors'),
+                //subtitle: Text('$status • $cap connectors'),
                 trailing: SizedBox(
                   height: 36,
                   child: TextButton.icon(

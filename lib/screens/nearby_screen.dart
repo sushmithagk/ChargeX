@@ -167,10 +167,18 @@ class _NearbyScreenState extends State<NearbyScreen> {
           filtered.sort((a, b) {
             final da = a.data();
             final db = b.data();
-            final d1 = _haversineMeters(_pos!.latitude, _pos!.longitude,
-                (da['lat'] ?? 0).toDouble(), (da['lng'] ?? 0).toDouble());
-            final d2 = _haversineMeters(_pos!.latitude, _pos!.longitude,
-                (db['lat'] ?? 0).toDouble(), (db['lng'] ?? 0).toDouble());
+            final d1 = _haversineMeters(
+              _pos!.latitude,
+              _pos!.longitude,
+              (da['lat'] ?? 0).toDouble(),
+              (da['lng'] ?? 0).toDouble(),
+            );
+            final d2 = _haversineMeters(
+              _pos!.latitude,
+              _pos!.longitude,
+              (db['lat'] ?? 0).toDouble(),
+              (db['lng'] ?? 0).toDouble(),
+            );
             return d1.compareTo(d2);
           });
 
@@ -194,32 +202,42 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Left side (Name + Status)
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              (d['name'] ?? filtered[i].id).toString(),
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              (d['name'] ?? doc.id).toString(),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
                             const SizedBox(height: 4),
+
+                            // ❌ Removed "1 connector" text
+                            // Text(
+                            //   '${d['capacity'] ?? 0} connectors • ${_fmtTs(d['lastUpdated'] as Timestamp?)}',
+                            //   style: TextStyle(color: Colors.grey[300]),
+                            // ),
+
                             Text(
-                              '${d['status'] ?? 'unknown'} • ${d['capacity'] ?? 0} connectors • ${_fmtTs(d['lastUpdated'] as Timestamp?)}',
+                              _fmtTs(d['lastUpdated'] as Timestamp?),
                               style: TextStyle(color: Colors.grey[300]),
                             ),
                           ],
                         ),
                       ),
 
-                      // Right side (distance + buttons)
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text('$km km', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          Text(
+                            '$km km',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           const SizedBox(height: 8),
 
-                          // Buttons Row
                           Row(
                             children: [
                               OutlinedButton(
@@ -229,7 +247,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                                     MaterialPageRoute(
                                       builder: (_) => StationDetailScreen(
                                         stationId: doc.id,
-                                        stationName: (d['name'] ?? filtered[i].id).toString(),
+                                        stationName: (d['name'] ?? doc.id).toString(),
                                       ),
                                     ),
                                   );
@@ -254,10 +272,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   ),
                 ),
               );
-
-
-
-
             },
           );
         },
