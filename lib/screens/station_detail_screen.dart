@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/slots_service.dart';
 
 class StationDetailScreen extends StatefulWidget {
   final String stationId;
@@ -20,22 +21,25 @@ class StationDetailScreen extends StatefulWidget {
 
 class _StationDetailScreenState extends State<StationDetailScreen> {
   final _fs = FirebaseFirestore.instance;
+  final _slots = SlotsService();
   final _fmt = DateFormat('EEE, dd MMM • hh:mm a');
 
-  /// Generate slots helper (keeps your existing API/SlotsService separate).
-  /// If you already have slot generation logic elsewhere keep it there,
-  /// otherwise you can call your service from here.
+  /// generate today's slots (keeps existing logic)
   Future<void> _generateToday() async {
     final today = DateTime.now();
-    // If you have a SlotsService, call it here.
-    // For now just show a message (or implement your generator).
+    await _slots.generateDailySlots(
+      stationId: widget.stationId,
+      day: today,
+      startHour: 9,
+      endHour: 21,
+      intervalMinutes: 30,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Run your slot generator (dev)')),
+      const SnackBar(content: Text('Slots generated for today')),
     );
   }
 
-  /// Open Google Maps for turn-by-turn navigation
   Future<void> _openDirections(double lat, double lng) async {
     final uri = Uri.parse(
       'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving',
@@ -50,104 +54,35 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
     }
   }
 
-  /// Book a slot using a transaction.
-  /// This enforces a MAX of 3 bookings per slot.
-  /// Returns:
-  /// - 'ok' -> booked
-  /// - 'already' -> user already in bookings
-  /// - 'full' -> 3 or more already
-  /// - 'error' -> other error
-  Future<String> _bookSlotTx({
-    required String stationId,
-    required String slotId,
-    required String uid,
-    int maxBookings = 3,
-  }) async {
-    final slotRef = _fs.collection('stations').doc(stationId).collection('slots').doc(slotId);
-
-    try {
-      return await _fs.runTransaction<String>((tx) async {
-        final snap = await tx.get(slotRef);
-        if (!snap.exists) return 'error';
-
-        final data = snap.data() ?? {};
-
-        // Prefer 'bookings' array (List<String>).
-        // But be resilient to different schemas:
-        // - If 'bookings' is a List => use it
-        // - If 'bookedBy' is a String => convert to list containing that one user
-        List<dynamic> bookingsListDynamic = [];
-        if (data.containsKey('bookings')) {
-          final b = data['bookings'];
-          if (b is List) bookingsListDynamic = b;
-        } else if (data.containsKey('bookedBy')) {
-          final bb = data['bookedBy'];
-          if (bb is String && bb.isNotEmpty) bookingsListDynamic = [bb];
-        }
-
-        // Normalize and count
-        final List<String> bookings =
-        bookingsListDynamic.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
-
-        if (bookings.contains(uid)) return 'already';
-        if (bookings.length >= maxBookings) return 'full';
-
-        // Add user UID to the array field 'bookings'
-        tx.update(slotRef, {
-          'bookings': FieldValue.arrayUnion([uid]),
-          // Optional: keep a status
-          'status': bookings.length + 1 >= maxBookings ? 'booked' : 'available',
-          // Optional: keep a bookingsCount (helps queries)
-          'bookingsCount': FieldValue.increment(1),
-        });
-
-        return 'ok';
-      });
-    } catch (e) {
-      debugPrint('bookSlotTx error: $e');
-      return 'error';
+  /// safe util to get booking count from a slot document value
+  int _getBookingCount(dynamic v) {
+    if (v == null) return 0;
+    if (v is int) return v;
+    if (v is List) return v.length;
+    if (v is String) {
+      // if some string representation — try to parse integer
+      final parsed = int.tryParse(v);
+      return parsed ?? 0;
     }
+    return 0;
   }
-
-  /// Cancel booking (remove uid from bookings array)
-  Future<bool> _cancelBookingTx({
-    required String stationId,
-    required String slotId,
-    required String uid,
-  }) async {
-    final slotRef = _fs.collection('stations').doc(stationId).collection('slots').doc(slotId);
-    try {
-      await _fs.runTransaction((tx) async {
-        final snap = await tx.get(slotRef);
-        if (!snap.exists) return;
-
-        final data = snap.data() ?? {};
-        final bookingsListDynamic = (data['bookings'] is List) ? data['bookings'] as List<dynamic> : [];
-
-        final bookings =
-        bookingsListDynamic.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
-
-        if (!bookings.contains(uid)) return;
-
-        tx.update(slotRef, {
-          'bookings': FieldValue.arrayRemove([uid]),
-          'bookingsCount': FieldValue.increment(-1),
-          'status': 'available',
-        });
-      });
-      return true;
-    } catch (e) {
-      debugPrint('cancelBookingTx error: $e');
-      return false;
-    }
-  }
-
-  String _fmtTs(Timestamp? t) => t == null ? '-' : DateFormat.jm().format(t.toDate().toLocal());
 
   @override
   Widget build(BuildContext context) {
     final stationRef = _fs.collection('stations').doc(widget.stationId);
-    final slotsRef = stationRef.collection('slots').orderBy('startTime');
+
+    // Only today's slots: from local start of day to next day start
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final startOfNextDay = startOfDay.add(const Duration(days: 1));
+
+    // Note: Firestore stores Timestamps; we use Timestamp.fromDate()
+    final slotsQuery = stationRef
+        .collection('slots')
+        .where('startTime',
+        isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('startTime', isLessThan: Timestamp.fromDate(startOfNextDay))
+        .orderBy('startTime');
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.stationName)),
@@ -163,14 +98,19 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                   subtitle: Text('Error: ${snap.error}'),
                 );
               }
-              if (!snap.hasData) return const LinearProgressIndicator();
-              final d = snap.data!.data() ?? {};
+              if (!snap.hasData) {
+                return const LinearProgressIndicator();
+              }
 
+              final d = snap.data!.data() ?? {};
               final name = (d['name'] ?? widget.stationName).toString();
-              final status = (d['status'] ?? 'unknown').toString();
-              final cap = (d['capacity'] ?? 0).toString();
-              final lat = (d['lat'] ?? 0).toDouble();
-              final lng = (d['lng'] ?? 0).toDouble();
+              final statusRaw = d['status'];
+              final status = (statusRaw is String) ? statusRaw : statusRaw?.toString() ?? 'unknown';
+              final capValue = d['capacity'];
+              final cap = (capValue is int) ? capValue : int.tryParse(capValue?.toString() ?? '') ?? 0;
+
+              final lat = (d['lat'] is num) ? (d['lat'] as num).toDouble() : 0.0;
+              final lng = (d['lng'] is num) ? (d['lng'] as num).toDouble() : 0.0;
 
               return ListTile(
                 title: Text(name),
@@ -178,7 +118,9 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                 trailing: SizedBox(
                   height: 36,
                   child: TextButton.icon(
-                    onPressed: (lat == 0 && lng == 0) ? null : () => _openDirections(lat, lng),
+                    onPressed: (lat == 0 && lng == 0)
+                        ? null
+                        : () => _openDirections(lat, lng),
                     icon: const Icon(Icons.navigation, size: 18),
                     label: const Text('Navigate'),
                     style: TextButton.styleFrom(
@@ -192,7 +134,7 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
             },
           ),
 
-          // generate button
+          // Generate today's slots (dev helper)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12.0),
             child: Row(
@@ -207,123 +149,147 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
           ),
           const Divider(height: 16),
 
-          // slots list (stream)
+          // Slots list
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: slotsRef.snapshots(),
+              stream: slotsQuery.snapshots(),
               builder: (_, s) {
                 if (s.hasError) {
                   return Center(child: Text('Error: ${s.error}'));
                 }
-                if (!s.hasData) return const Center(child: CircularProgressIndicator());
+                if (!s.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
                 final docs = s.data!.docs;
-
-                // Show only today's slots (filter)
-                final today = DateTime.now();
-                final List<QueryDocumentSnapshot<Map<String, dynamic>>> todayDocs =
-                docs.where((doc) {
-                  final data = doc.data();
-                  if (data['startTime'] is Timestamp) {
-                    final ts = (data['startTime'] as Timestamp).toDate().toLocal();
-                    return ts.year == today.year && ts.month == today.month && ts.day == today.day;
-                  }
-                  return false;
-                }).toList();
-
-                if (todayDocs.isEmpty) {
-                  return const Center(child: Text('No slots yet. Tap “Generate Today’s Slots”.'));
+                if (docs.isEmpty) {
+                  return const Center(
+                    child: Text('No slots yet. Tap “Generate Today’s Slots”.'),
+                  );
                 }
 
                 return ListView.builder(
-                  itemCount: todayDocs.length,
+                  itemCount: docs.length,
                   itemBuilder: (_, i) {
-                    final ref = todayDocs[i].reference;
-                    final d = todayDocs[i].data();
+                    final doc = docs[i];
+                    final d = doc.data();
 
-                    final start = (d['startTime'] as Timestamp).toDate().toLocal();
-                    final end = (d['endTime'] as Timestamp).toDate().toLocal();
-
-                    // Determine bookings count robustly:
-                    int bookingsCount = 0;
-                    if (d.containsKey('bookings') && d['bookings'] is List) {
-                      bookingsCount = (d['bookings'] as List).length;
-                    } else if (d.containsKey('bookingsCount') && d['bookingsCount'] is int) {
-                      bookingsCount = d['bookingsCount'] as int;
-                    } else if (d.containsKey('bookedBy') && d['bookedBy'] is String && (d['bookedBy'] as String).isNotEmpty) {
-                      // fallback single-booking
-                      bookingsCount = 1;
-                    }
+                    final start = (d['startTime'] as Timestamp?)?.toDate()?.toLocal();
+                    final end = (d['endTime'] as Timestamp?)?.toDate()?.toLocal();
+                    final statusRaw = d['status'];
+                    final status = (statusRaw is String) ? statusRaw : statusRaw?.toString() ?? 'available';
+                    final owner = d['bookedBy'];
+                    final bookingsCount = _getBookingCount(d['bookedBy'] ?? d['bookings']);
 
                     final uid = FirebaseAuth.instance.currentUser?.uid;
-                    final bool isBookedByMe;
-                    if (d.containsKey('bookings') && d['bookings'] is List) {
-                      final bookings = (d['bookings'] as List).map((e) => e?.toString() ?? '').toList();
-                      isBookedByMe = uid != null && bookings.contains(uid);
-                    } else if (d.containsKey('bookedBy') && d['bookedBy'] is String) {
-                      isBookedByMe = uid != null && (d['bookedBy'] as String) == uid;
-                    } else {
-                      isBookedByMe = false;
-                    }
+                    final isMine = (owner is String && uid != null && owner == uid) ||
+                        (owner is List && uid != null && owner.contains(uid));
 
-                    final status = (d['status'] ?? 'available').toString();
+                    // trailing button: constrained to avoid overflow
+                    Widget trailingWidget;
+                    if (status == 'available') {
+                      trailingWidget = SizedBox(
+                        width: 84,
+                        height: 40,
+                        child: ElevatedButton(
+                          onPressed: uid == null
+                              ? null
+                              : () async {
+                            // call slots service; it should handle concurrency & limit=3
+                            final res = await _slots.bookSlot(
+                              stationId: widget.stationId,
+                              slotId: doc.id,
+                              uid: uid,
+                            );
 
-                    Widget trailing;
-                    if (isBookedByMe) {
-                      trailing = SizedBox(
-                        height: 36,
+                            if (!mounted) return;
+                            switch (res) {
+                              case 'ok':
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booked!')));
+                                break;
+                              case 'already':
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You already booked this slot.')));
+                                break;
+                              case 'full':
+                              // popup
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => AlertDialog(
+                                    title: const Text('Slot full'),
+                                    content: const Text('Sorry — this slot is already fully booked.'),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+                                    ],
+                                  ),
+                                );
+                                break;
+                              case 'not_found':
+                              case 'error':
+                              default:
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking failed. Try again.')));
+                            }
+                          },
+                          child: const Text('Book'),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(72, 36),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      );
+                    } else if (status == 'booked' && isMine) {
+                      // show cancel/booked state for user's own booking
+                      trailingWidget = SizedBox(
+                        width: 84,
+                        height: 40,
                         child: OutlinedButton(
                           onPressed: uid == null
                               ? null
                               : () async {
-                            final ok = await _cancelBookingTx(
+                            // call your slots service to toggle/cancel (adapt to your API)
+                            final res = await _slots.bookSlot(
                               stationId: widget.stationId,
-                              slotId: todayDocs[i].id,
+                              slotId: doc.id,
                               uid: uid,
                             );
                             if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(ok ? 'Cancelled' : 'Failed to cancel')),
-                            );
+                            // we expect your service to return codes as above
+                            switch (res) {
+                              case 'ok':
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booked!')));
+                                break;
+                              case 'already':
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You already booked this slot.')));
+                                break;
+                              case 'full':
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => AlertDialog(
+                                    title: const Text('Slot full'),
+                                    content: const Text('Sorry — this slot is already fully booked.'),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+                                    ],
+                                  ),
+                                );
+                                break;
+                              case 'not_found':
+                              case 'error':
+                              default:
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking failed. Try again.')));
+                            }
                           },
                           child: const Text('Cancel'),
                           style: OutlinedButton.styleFrom(minimumSize: const Size(72, 36)),
                         ),
                       );
                     } else {
-                      trailing = SizedBox(
-                        height: 36,
-                        child: ElevatedButton(
-                          onPressed: uid == null
-                              ? null
-                              : () async {
-                            final res = await _bookSlotTx(
-                              stationId: widget.stationId,
-                              slotId: todayDocs[i].id,
-                              uid: uid,
-                              maxBookings: 3,
-                            );
-                            if (!mounted) return;
-                            if (res == 'ok') {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booked!')));
-                            } else if (res == 'already') {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You already booked this slot.')));
-                            } else if (res == 'full') {
-                              showDialog(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text('Slot full'),
-                                  content: const Text('Sorry — this slot is already fully booked.'),
-                                  actions: [
-                                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
-                                  ],
-                                ),
-                              );
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking failed. Try again.')));
-                            }
-                          },
-                          child: const Text('Book'),
-                          style: ElevatedButton.styleFrom(minimumSize: const Size(72, 36)),
+                      trailingWidget = SizedBox(
+                        width: 84,
+                        height: 40,
+                        child: OutlinedButton(
+                          onPressed: null,
+                          child: const Text('Booked'),
+                          style: OutlinedButton.styleFrom(minimumSize: const Size(72, 36)),
                         ),
                       );
                     }
@@ -331,11 +297,11 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                     return Card(
                       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       child: ListTile(
-                        title: Text('${_fmt.format(start)} → ${DateFormat('hh:mm a').format(end)}'),
-                        subtitle: Text('Bookings: $bookingsCount / 3\nStatus: ${status.toUpperCase()}'),
-                        trailing: trailing,
-                        isThreeLine: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        title: Text('${start != null ? _fmt.format(start) : '-'} → ${end != null ? DateFormat('hh:mm a').format(end) : '-'}'),
+                        subtitle: Text('Bookings: $bookingsCount / ${d['capacity'] ?? 3}'),
+                        trailing: trailingWidget,
+                        isThreeLine: false,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                       ),
                     );
                   },
@@ -348,4 +314,3 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
     );
   }
 }
-

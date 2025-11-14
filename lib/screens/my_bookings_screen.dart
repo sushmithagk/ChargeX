@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../services/slots_service.dart';
 
 class MyBookingsScreen extends StatefulWidget {
   const MyBookingsScreen({super.key});
@@ -13,65 +14,30 @@ class MyBookingsScreen extends StatefulWidget {
 
 class _MyBookingsScreenState extends State<MyBookingsScreen> {
   final _fs = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
-
-  // helper - format timestamp safely
-  String _fmtTs(Timestamp? t) {
-    if (t == null) return '-';
-    try {
-      final dt = t.toDate().toLocal();
-      return DateFormat('EEE, dd MMM • hh:mm a').format(dt);
-    } catch (_) {
-      return '-';
-    }
-  }
-
-  Stream<QuerySnapshot<Map<String, dynamic>>>? _bookingStreamForUid(String uid) {
-    // Collection group query: all 'slots' docs across subcollections
-    // WARNING: this exact query (where + orderBy) requires a composite index in Firestore.
-    return _fs
-        .collectionGroup('slots')
-        .where('bookedBy', isEqualTo: uid)
-        .orderBy('startTime')
-        .snapshots();
-  }
+  final _slotsService = SlotsService();
+  final _fmt = DateFormat('EEE, dd MMM • hh:mm a');
 
   @override
   Widget build(BuildContext context) {
-    final user = _auth.currentUser;
-    if (user == null) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('My Bookings')),
-        body: const Center(child: Text('Please sign in to see your bookings.')),
+        body: const Center(child: Text('Sign in to view your bookings')),
       );
     }
 
-    final uid = user.uid;
-    final stream = _bookingStreamForUid(uid);
+    final bookingsRef = _fs.collection('users').doc(uid).collection('bookings').orderBy('startTime');
 
     return Scaffold(
       appBar: AppBar(title: const Text('My Bookings')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: stream,
+        stream: bookingsRef.snapshots(),
         builder: (context, snap) {
           if (snap.hasError) {
-            // Show helpful error: Firestore often provides an index-creation URL in the message
-            final err = snap.error.toString();
-            return Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: SingleChildScrollView(
-                child: Text(
-                  'Error loading bookings: $err\n\n'
-                      'If the error mentions an index, open the URL the error suggests in the Firebase Console, create the composite collection-group index for collection "slots" (bookedBy + startTime), wait for it to build, then restart the app.',
-                  style: const TextStyle(color: Colors.red),
-                ),
-              ),
-            );
+            return Center(child: Text('Error loading bookings: ${snap.error}'));
           }
-
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
 
           final docs = snap.data!.docs;
           if (docs.isEmpty) {
@@ -79,92 +45,69 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 12),
             itemCount: docs.length,
-            itemBuilder: (context, i) {
-              final doc = docs[i];
-              final d = doc.data();
+            itemBuilder: (_, i) {
+              final d = docs[i].data();
+              final start = (d['startTime'] as Timestamp?)?.toDate();
+              final end = (d['endTime'] as Timestamp?)?.toDate();
+              final stationId = d['stationId'] as String?;
+              final stationNameFromDoc = d['stationName'] as String?;
+              final status = (d['status'] as String?) ?? 'booked';
 
-              // Defensive parsing for fields that may not be strictly typed:
-              String slotId = doc.id;
-              // stationId from path: .../stations/{stationId}/slots/{slotId}
-              String? stationId;
-              try {
-                stationId = doc.reference.parent.parent?.id;
-              } catch (_) {
-                stationId = null;
-              }
-
-              // If you stored stationName inside slot doc, use it; otherwise show stationId
-              String stationName = '';
-              final rawName = d['stationName'];
-              if (rawName is String && rawName.isNotEmpty) {
-                stationName = rawName;
+              // if booking saved stationName in the booking doc use it, otherwise fetch
+              Widget titleWidget;
+              if (stationNameFromDoc != null && stationNameFromDoc.isNotEmpty) {
+                titleWidget = Text(stationNameFromDoc, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600));
               } else if (stationId != null) {
-                stationName = stationId;
+                // fetch station doc name
+                titleWidget = FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                  future: _fs.collection('stations').doc(stationId).get(),
+                  builder: (context, ss) {
+                    if (ss.hasError) return Text(stationId);
+                    if (!ss.hasData) return Text(stationId);
+                    final stationData = ss.data!.data();
+                    final name = stationData?['name']?.toString() ?? stationId;
+                    return Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600));
+                  },
+                );
               } else {
-                stationName = 'Station';
+                titleWidget = const Text('Station');
               }
-
-              // start and end times
-              Timestamp? tStart = d['startTime'] as Timestamp?;
-              Timestamp? tEnd = d['endTime'] as Timestamp?;
-              final startStr = _fmtTs(tStart);
-              final endStr = tEnd == null ? '-' : DateFormat('hh:mm a').format(tEnd.toDate().toLocal());
-
-              // bookedBy may sometimes be stored as list or string depending on earlier bugs: handle both
-              String? bookedBy;
-              final rawBooked = d['bookedBy'];
-              if (rawBooked is String) {
-                bookedBy = rawBooked;
-              } else if (rawBooked is List && rawBooked.isNotEmpty) {
-                bookedBy = rawBooked.first?.toString();
-              } else {
-                bookedBy = null;
-              }
-
-              final status = (d['status'] is String) ? (d['status'] as String) : (d['status']?.toString() ?? 'unknown');
 
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        stationName,
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 8),
-                      Text('$startStr → $endStr'),
-                      const SizedBox(height: 8),
-                      Text('Status: ${status.toUpperCase()}'),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          if (bookedBy != null && bookedBy == uid)
-                            OutlinedButton(
-                              onPressed: () async {
-                                // cancel booking: set bookedBy to null and status to 'available'
-                                try {
-                                  await doc.reference.update({
-                                    'bookedBy': FieldValue.delete(),
-                                    'status': 'available',
-                                  });
-                                  if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking cancelled')));
-                                } catch (e) {
-                                  if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cancel failed: $e')));
-                                }
-                              },
-                              child: const Text('Cancel'),
-                            ),
-                        ],
-                      ),
-                    ],
+                child: ListTile(
+                  title: titleWidget,
+                  subtitle: Text(
+                    '${start != null ? _fmt.format(start.toLocal()) : '-'} → ${end != null ? DateFormat('hh:mm a').format(end.toLocal()) : '-'}\nStatus: ${status.toUpperCase()}',
+                  ),
+                  isThreeLine: true,
+                  trailing: SizedBox(
+                    height: 36,
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        final slotId = d['slotId'] as String?;
+                        final bookingDocId = docs[i].id;
+                        final stId = stationId;
+                        if (stId == null || slotId == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Missing booking meta')));
+                          return;
+                        }
+
+                        final ok = await _slotsService.cancelBooking(
+                          stationId: stId,
+                          slotId: slotId,
+                          uid: uid,
+                          bookingDocId: bookingDocId,
+                        );
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(ok ? 'Cancelled' : 'Cancel failed')),
+                        );
+                      },
+                      child: const Text('Cancel'),
+                      style: OutlinedButton.styleFrom(minimumSize: const Size(72, 36)),
+                    ),
                   ),
                 ),
               );
