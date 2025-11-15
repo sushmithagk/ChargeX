@@ -21,7 +21,6 @@ class ProfileScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Sign Out',
-
             onPressed: () async {
               final auth = Provider.of<AuthService>(context, listen: false);
 
@@ -37,8 +36,7 @@ class ProfileScreen extends StatelessWidget {
                     (route) => false,
               );
             },
-
-          )
+          ),
         ],
       ),
 
@@ -100,37 +98,10 @@ class ProfileScreen extends StatelessWidget {
           );
         },
       ),
-
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.extended(
-            onPressed: () => Navigator.pushNamed(context, '/my-bookings'),
-            label: const Text('My Bookings'),
-            icon: const Icon(Icons.calendar_month),
-          ),
-          const SizedBox(height: 10),
-
-          FloatingActionButton.extended(
-            onPressed: () => Navigator.pushNamed(context, '/nearby'),
-            label: const Text('Find Stations'),
-            icon: const Icon(Icons.map_outlined),
-          ),
-          const SizedBox(height: 10),
-
-          // ⭐ Added Trip Planner Button
-          FloatingActionButton.extended(
-            onPressed: () => Navigator.pushNamed(context, '/trip'),
-            label: const Text('Trip Planner'),
-            icon: const Icon(Icons.alt_route),
-          ),
-        ],
-      ),
     );
   }
 
   // --- Helpers ---
-
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0, top: 16.0),
