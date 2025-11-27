@@ -1,4 +1,6 @@
+// lib/screens/profile_screen.dart
 import 'package:chargex/models/user_model.dart';
+import 'package:chargex/screens/edit_profile_screen.dart';
 import 'package:chargex/services/auth_service.dart';
 import 'package:chargex/services/database_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -18,6 +20,20 @@ class ProfileScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('My Profile'),
         actions: [
+          // ✏️ Edit Profile button
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: 'Edit Profile',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const EditProfileScreen(),
+                ),
+              );
+            },
+          ),
+          // 🚪 Logout
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Sign Out',

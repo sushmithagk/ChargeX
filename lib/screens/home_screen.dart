@@ -12,10 +12,15 @@ class HomeScreen extends StatelessWidget {
   String getUserName() {
     final u = FirebaseAuth.instance.currentUser;
     if (u == null) return "User";
+
     if (u.displayName != null && u.displayName!.isNotEmpty) {
       return u.displayName!;
     }
-    if (u.email != null) return u.email!.split('@')[0];
+
+    if (u.email != null) {
+      return u.email!.split('@')[0];
+    }
+
     return "User";
   }
 
@@ -39,7 +44,7 @@ class HomeScreen extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            // ---------- PROFILE ROW ----------
+            // ===================== PROFILE ROW FIXED (NO OVERFLOW) =====================
             Row(
               children: [
                 CircleAvatar(
@@ -56,29 +61,32 @@ class HomeScreen extends StatelessWidget {
 
                 const SizedBox(width: 16),
 
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      "Welcome",
-                      style: TextStyle(fontSize: 20, color: Colors.grey),
-                    ),
-                    Text(
-                      getUserName(),
-                      style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white),
-                    ),
-                  ],
+                Expanded(     // ⭐ Overflow fixed
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Welcome",
+                        style: TextStyle(fontSize: 20, color: Colors.grey),
+                      ),
+                      Text(
+                        getUserName(),
+                        maxLines: 1,                     // ⭐ Avoid overflow
+                        overflow: TextOverflow.ellipsis, // ⭐ Add dots ...
+                        style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
 
-            // ⭐ Perfect small spacing — not big, not removed
             const SizedBox(height: 15),
 
-            // ---------- BUTTON GRID ----------
+            // ===================== BUTTON GRID =====================
             Expanded(
               child: Center(
                 child: GridView.count(
@@ -122,14 +130,17 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  // ⭐ PERFECT TILE WITH EXACT SHADE
+  // ===================== BUTTON TILE WIDGET =====================
   Widget _tile(BuildContext ctx, String title, IconData icon, Widget screen) {
     return InkWell(
-      onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => screen)),
+      onTap: () => Navigator.push(
+        ctx,
+        MaterialPageRoute(builder: (_) => screen),
+      ),
       borderRadius: BorderRadius.circular(18),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF1D1A27), // exact shade from your screenshot
+          color: const Color(0xFF1D1A27), // your exact color
           borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
@@ -141,7 +152,7 @@ class HomeScreen extends StatelessWidget {
               title,
               style: const TextStyle(fontSize: 16, color: Colors.white),
               textAlign: TextAlign.center,
-            )
+            ),
           ],
         ),
       ),

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'package:chargex/services/auth_service.dart';
 import 'package:chargex/services/database_service.dart';
+import 'package:chargex/services/location_service.dart';   // ⭐ FIXED IMPORT
 import 'package:chargex/screens/auth_wrapper.dart';
 
 void main() async {
@@ -25,6 +26,9 @@ class MyApp extends StatelessWidget {
         ),
         Provider<DatabaseService>(
           create: (_) => DatabaseService(),
+        ),
+        Provider<LocationService>(
+          create: (_) => LocationService(),
         ),
       ],
       child: MaterialApp(

@@ -114,7 +114,7 @@ class _SignupScreenState extends State<SignupScreen> {
         _location = GeoPoint(pos.latitude, pos.longitude);
         _isLocating = false;
       });
-      if (mounted) showSnackBar(context, "Location captured!");
+      if (mounted) showSnackBar(context, "Location captured!", isError: false);
     } on LocationServiceDisabledException {
       if (mounted) await _showEnableLocationDialog();
     } catch (e) {
