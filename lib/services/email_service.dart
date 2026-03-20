@@ -1,12 +1,14 @@
 import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 
 class EmailService {
   // 🔹 Replace these with your actual EmailJS credentials
-  static const String _serviceId = 'service_yw9wh5v'; // Your Service ID
-  static const String _templateId = 'template_pnaq6jc'; // Your Template ID
-  static const String _publicKey = 'JiqA69mvNeqXj80Cv';   // Your Public Key
+  static String get _serviceId => dotenv.env['EMAILJS_SERVICE_ID']!;
+  static String get _templateId => dotenv.env['EMAILJS_TEMPLATE_ID']!;
+  static String get _publicKey => dotenv.env['EMAILJS_PUBLIC_KEY']!;
 
   /// Sends OTP email and returns the generated OTP
   static Future<String?> sendOtpEmail(String email) async {

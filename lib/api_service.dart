@@ -2,10 +2,11 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ChargerApiService {
   // ⬅️ paste your real key between the quotes
-  static const String ocmApiKey = "e13f3464-933b-459a-83e5-3d830cb694f3";
+  static String get ocmApiKey => dotenv.env['OCM_API_KEY']!;
 
   static Future<void> updateStationsNear({
     required double lat,
