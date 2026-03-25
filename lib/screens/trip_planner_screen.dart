@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class TripPlannerScreen extends StatefulWidget {
   const TripPlannerScreen({Key? key}) : super(key: key);
@@ -18,8 +19,7 @@ class TripPlannerScreen extends StatefulWidget {
 
 class _TripPlannerScreenState extends State<TripPlannerScreen> {
   // === Put your Google API key here (Directions & Maps enabled) ===
-  static const String googleApiKey = 'AIzaSyBREDegu1Lj5gXhdrSCcnAa1omChs7-EHs';
-
+  String get googleApiKey => dotenv.env['GOOGLE_MAPS_API_KEY']!;
   GoogleMapController? _mapController;
   final TextEditingController _sourceController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
